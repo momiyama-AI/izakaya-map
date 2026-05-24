@@ -4,6 +4,33 @@ const drinkLabels = {
   lemon_sour: "レモンサワー",
 };
 
+const drinkMarkerStyles = {
+  highball: {
+    key: "highball",
+    shortLabel: "HB",
+    color: "#b85f17",
+    accent: "#ffd38c",
+    activeColor: "#8c3f10",
+    icon: "glass",
+  },
+  beer: {
+    key: "beer",
+    shortLabel: "BEER",
+    color: "#d69212",
+    accent: "#fff0a8",
+    activeColor: "#a46708",
+    icon: "mug",
+  },
+  lemon_sour: {
+    key: "lemon-sour",
+    shortLabel: "LEMON",
+    color: "#c3a412",
+    accent: "#f6ff9b",
+    activeColor: "#7d8f13",
+    icon: "lemon",
+  },
+};
+
 const state = {
   areas: [],
   config: { maps: { provider: "fallback" } },
@@ -125,6 +152,77 @@ function formatDistance(distanceMeters) {
   return `${distanceMeters}m`;
 }
 
+function getDrinkMarkerStyle(category = state.selectedDrink) {
+  return drinkMarkerStyles[category] || drinkMarkerStyles.highball;
+}
+
+function escapeSvgText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function drinkIconPath(style) {
+  if (style.icon === "mug") {
+    return `
+      <path d="M36 23h20v20a7 7 0 0 1-7 7h-6a7 7 0 0 1-7-7V23z" fill="none" stroke="white" stroke-width="3"/>
+      <path d="M56 29h6a6 6 0 0 1 0 12h-6" fill="none" stroke="white" stroke-width="3"/>
+      <path d="M38 19h16" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    `;
+  }
+
+  if (style.icon === "lemon") {
+    return `
+      <circle cx="46" cy="35" r="12" fill="none" stroke="white" stroke-width="3"/>
+      <path d="M46 23v24M34 35h24M38 27l16 16M54 27 38 43" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    `;
+  }
+
+  return `
+    <path d="M37 23h19l-4 26H41L37 23z" fill="none" stroke="white" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M40 31h14" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="43" cy="39" r="2" fill="white"/>
+    <circle cx="50" cy="36" r="2" fill="white"/>
+  `;
+}
+
+function createPriceMarkerSvg(store, active = false) {
+  const style = getDrinkMarkerStyle(store.selectedPrice?.category);
+  const fill = active ? style.activeColor : style.color;
+  const stroke = active ? "#1f1b17" : "#ffffff";
+  const price = escapeSvgText(store.selectedPrice?.formattedPrice || "");
+  const label = escapeSvgText(style.shortLabel);
+  const icon = drinkIconPath(style);
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="128" height="78" viewBox="0 0 128 78">
+      <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+        <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#2d241d" flood-opacity="0.28"/>
+      </filter>
+      <path d="M13 7h102a9 9 0 0 1 9 9v38a9 9 0 0 1-9 9H72l-8 11-8-11H13a9 9 0 0 1-9-9V16a9 9 0 0 1 9-9z"
+        fill="${fill}" stroke="${stroke}" stroke-width="${active ? 4 : 3}" filter="url(#shadow)"/>
+      <rect x="8" y="11" width="112" height="16" rx="7" fill="${style.accent}" opacity="0.92"/>
+      <text x="64" y="23" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="800" fill="#2b2119">${label}</text>
+      <g transform="translate(-20 0) scale(0.74)">
+        ${icon}
+      </g>
+      <text x="77" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="900" fill="#ffffff">${price}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function createGoogleMarkerIcon(maps, store, active = false) {
+  return {
+    url: createPriceMarkerSvg(store, active),
+    scaledSize: new maps.Size(active ? 136 : 128, active ? 83 : 78),
+    anchor: new maps.Point(active ? 68 : 64, active ? 82 : 77),
+  };
+}
+
 function renderAreaTabs() {
   elements.areaTabs.innerHTML = "";
   for (const area of state.areas) {
@@ -227,13 +325,23 @@ function renderFallbackMapPins() {
 
   state.stores.forEach((store, index) => {
     const position = pinPosition(store, index);
+    const style = getDrinkMarkerStyle(store.selectedPrice.category);
     const pin = document.createElement("button");
     pin.type = "button";
-    pin.className = `map-pin${store.id === state.selectedStoreId ? " active" : ""}`;
+    pin.className = `map-pin drink-${style.key}${
+      store.id === state.selectedStoreId ? " active" : ""
+    }`;
     pin.style.left = `${position.x}%`;
     pin.style.top = `${position.y}%`;
+    pin.style.setProperty("--pin-color", style.color);
+    pin.style.setProperty("--pin-active-color", style.activeColor);
+    pin.style.setProperty("--pin-accent", style.accent);
     pin.dataset.storeId = store.id;
-    pin.innerHTML = `<strong>${store.selectedPrice.formattedPrice}</strong><span>${store.name}</span>`;
+    pin.innerHTML = `
+      <span class="drink-code">${style.shortLabel}</span>
+      <strong>${store.selectedPrice.formattedPrice}</strong>
+      <span>${store.name}</span>
+    `;
     pin.addEventListener("click", () => selectStore(store.id));
     elements.mapCanvas.append(pin);
   });
@@ -295,16 +403,13 @@ async function renderGoogleMapPins() {
   }
 
   for (const store of state.stores) {
+    const active = store.id === state.selectedStoreId;
     const marker = new maps.Marker({
       map: state.googleMap,
       position: { lat: store.latitude, lng: store.longitude },
       title: store.name,
-      label: {
-        text: store.selectedPrice.formattedPrice,
-        color: "#ffffff",
-        fontSize: "12px",
-        fontWeight: "700",
-      },
+      icon: createGoogleMarkerIcon(maps, store, active),
+      zIndex: active ? 1000 : 100,
     });
     marker.addListener("click", () => selectStore(store.id));
     state.googleMarkers.set(store.id, marker);
@@ -358,7 +463,7 @@ function renderStoreList() {
       </div>
       ${distanceText ? `<p class="distance-text">現在地から ${distanceText}</p>` : ""}
     `;
-    card.addEventListener("click", () => selectStore(store.id));
+    card.addEventListener("click", () => selectStore(store.id, { focusMap: true }));
     elements.storeList.append(card);
   }
 }
@@ -416,6 +521,19 @@ function refreshActiveStates() {
   }
 
   if (useGoogleMaps()) {
+    const maps = window.google?.maps;
+    if (maps) {
+      for (const store of state.stores) {
+        const marker = state.googleMarkers.get(store.id);
+        if (!marker) {
+          continue;
+        }
+
+        const active = store.id === state.selectedStoreId;
+        marker.setIcon(createGoogleMarkerIcon(maps, store, active));
+        marker.setZIndex(active ? 1000 : 100);
+      }
+    }
     return;
   }
 
@@ -424,9 +542,25 @@ function refreshActiveStates() {
   }
 }
 
-function selectStore(storeId) {
+function focusStoreOnMap(storeId) {
+  const store = state.stores.find((candidate) => candidate.id === storeId);
+  if (!store || !state.googleMap) {
+    return;
+  }
+
+  state.googleMap.panTo({ lat: store.latitude, lng: store.longitude });
+  const currentZoom = state.googleMap.getZoom?.() || 15;
+  if (currentZoom < 16) {
+    state.googleMap.setZoom(16);
+  }
+}
+
+function selectStore(storeId, options = {}) {
   state.selectedStoreId = storeId;
   refreshActiveStates();
+  if (options.focusMap) {
+    focusStoreOnMap(storeId);
+  }
   renderDetail();
   track("store_selected", { storeId });
 }
@@ -574,4 +708,3 @@ elements.refreshButton.addEventListener("click", async () => {
 });
 
 initialize();
-

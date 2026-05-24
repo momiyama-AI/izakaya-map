@@ -319,11 +319,11 @@ button {
   display: grid;
   min-width: 88px;
   max-width: 150px;
-  padding: 8px 10px;
+  padding: 5px 10px 8px;
   border: 2px solid #fff;
   border-radius: 8px;
   color: #fff;
-  background: var(--accent);
+  background: var(--pin-color, var(--accent));
   box-shadow: 0 12px 24px rgb(68 48 38 / 28%);
   transform: translate(-50%, -100%);
   transition:
@@ -333,8 +333,35 @@ button {
 
 .map-pin:hover,
 .map-pin.active {
-  background: var(--teal);
+  background: var(--pin-active-color, var(--teal));
   transform: translate(-50%, -106%);
+}
+
+.map-pin::after {
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: 17px;
+  height: 17px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  background: inherit;
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.map-pin .drink-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 17px;
+  margin: -1px -5px 3px;
+  border-radius: 6px;
+  color: #2b2119;
+  background: var(--pin-accent, #ffd38c);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .map-pin strong {
