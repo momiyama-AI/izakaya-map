@@ -70,6 +70,7 @@ DBファイルは `.gitignore` で除外しています。
 SELECT
   id,
   name,
+  tabelog_url,
   created_at,
   updated_at,
   created_by,

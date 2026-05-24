@@ -1,4 +1,4 @@
-const { createDatabase } = require("../src/data/database");
+const { buildTabelogSearchUrl, createDatabase } = require("../src/data/database");
 
 const overpassEndpoint =
   process.env.OVERPASS_ENDPOINT || "https://overpass-api.de/api/interpreter";
@@ -217,16 +217,22 @@ function toStore(area, element) {
   const tags = element.tags || {};
   const position = getElementPosition(element);
   const source = `${element.type}/${element.id}`;
+  const store = {
+    name: normalizeName(tags.name || tags["name:ja"]),
+    address: buildAddress(tags, area),
+  };
+
   return {
     id: `STORE-OSM-${area.idPart}-${element.type.toUpperCase()}-${element.id}`,
     areaId: area.areaId,
-    name: normalizeName(tags.name || tags["name:ja"]),
-    address: buildAddress(tags, area),
+    name: store.name,
+    address: store.address,
     stationExit: "OpenStreetMap",
     latitude: position.latitude,
     longitude: position.longitude,
     businessStatus: "open",
     openHours: tags.opening_hours || "\u672a\u78ba\u8a8d",
+    tabelogUrl: buildTabelogSearchUrl(store),
     tags: buildTags(tags),
     description: `OpenStreetMap\u304b\u3089\u53d6\u5f97\u3057\u305f\u5e97\u8217\u4f4d\u7f6e\u60c5\u5831\u3067\u3059\u3002\u30c9\u30ea\u30f3\u30af\u4fa1\u683c\u306f\u672a\u78ba\u8a8d\u3067\u3059\u3002source=osm/${source}`,
     createdBy: actor,

@@ -182,6 +182,24 @@ function freshnessBadge(store) {
   `;
 }
 
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function tabelogLinkHtml(store) {
+  const url = safeExternalUrl(store.tabelogUrl);
+  if (!url) {
+    return "";
+  }
+
+  return `<a class="secondary-link" href="${escapeSvgText(url)}" target="_blank" rel="noreferrer">\u98df\u3079\u30ed\u30b0</a>`;
+}
+
 function escapeSvgText(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -543,6 +561,7 @@ function renderDetail() {
         </div>
         <div class="detail-actions">
           <span class="meta">${store.openHours}</span>
+          ${tabelogLinkHtml(store)}
           <a class="primary-link" href="${store.mapUrl}" target="_blank" rel="noreferrer">地図で開く</a>
         </div>
       </div>

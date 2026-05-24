@@ -443,6 +443,7 @@ button {
 .detail-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
 }
@@ -553,18 +554,28 @@ button {
   color: var(--muted);
 }
 
-.primary-link {
+.primary-link,
+.secondary-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--accent);
   border-radius: 8px;
-  color: #fff;
-  background: var(--accent);
   font-weight: 800;
   text-decoration: none;
+}
+
+.primary-link {
+  border: 1px solid var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.secondary-link {
+  border: 1px solid #e3a33a;
+  color: #7c4a07;
+  background: #fff4dc;
 }
 
 @media (max-width: 1060px) {

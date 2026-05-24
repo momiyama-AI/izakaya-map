@@ -15,8 +15,15 @@ const auditColumns = [
   { name: "updated_by", definition: "TEXT NOT NULL DEFAULT 'system'" },
 ];
 
+const storeColumns = [{ name: "tabelog_url", definition: "TEXT NOT NULL DEFAULT ''" }];
+
 function nowIso() {
   return new Date().toISOString();
+}
+
+function buildTabelogSearchUrl(store) {
+  const query = [store.name, store.address].filter(Boolean).join(" ").trim();
+  return query ? `https://tabelog.com/rstLst/?sw=${encodeURIComponent(query)}` : "";
 }
 
 function auditFromRow(row) {
@@ -66,6 +73,7 @@ function toStore(row) {
     longitude: row.longitude,
     businessStatus: row.business_status,
     openHours: row.open_hours,
+    tabelogUrl: row.tabelog_url || buildTabelogSearchUrl(row),
     tags: JSON.parse(row.tags_json || "[]"),
     description: row.description,
     ...auditFromRow(row),
@@ -129,6 +137,36 @@ function backfillAuditColumns(db, tableName) {
   ).run(timestamp, timestamp, systemActor, systemActor);
 }
 
+function backfillStoreExternalUrls(db) {
+  const rows = db
+    .prepare(
+      `
+      SELECT id, name, address, tabelog_url
+      FROM stores
+      WHERE tabelog_url = ''
+    `,
+    )
+    .all();
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const timestamp = nowIso();
+  const updateStore = db.prepare(`
+    UPDATE stores
+    SET
+      tabelog_url = ?,
+      updated_at = ?,
+      updated_by = ?
+    WHERE id = ?
+  `);
+
+  for (const row of rows) {
+    updateStore.run(buildTabelogSearchUrl(row), timestamp, systemActor, row.id);
+  }
+}
+
 function ensureSchema(db) {
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -157,6 +195,7 @@ function ensureSchema(db) {
       longitude REAL NOT NULL,
       business_status TEXT NOT NULL DEFAULT 'open',
       open_hours TEXT NOT NULL DEFAULT '',
+      tabelog_url TEXT NOT NULL DEFAULT '',
       tags_json TEXT NOT NULL DEFAULT '[]',
       description TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT '',
@@ -210,6 +249,9 @@ function ensureSchema(db) {
     addMissingColumns(db, tableName, auditColumns);
     backfillAuditColumns(db, tableName);
   }
+
+  addMissingColumns(db, "stores", storeColumns);
+  backfillStoreExternalUrls(db);
 }
 
 function seedInitialData(db) {
@@ -267,6 +309,7 @@ function seedInitialData(db) {
         longitude,
         business_status,
         open_hours,
+        tabelog_url,
         tags_json,
         description,
         created_at,
@@ -274,10 +317,11 @@ function seedInitialData(db) {
         created_by,
         updated_by
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const store of stores) {
+      const tabelogUrl = store.tabelogUrl || buildTabelogSearchUrl(store);
       insertStore.run(
         store.id,
         store.areaId,
@@ -288,6 +332,7 @@ function seedInitialData(db) {
         store.longitude,
         store.businessStatus,
         store.openHours,
+        tabelogUrl,
         JSON.stringify(store.tags),
         store.description,
         audit.createdAt,
@@ -421,6 +466,7 @@ function createDatabase(options = {}) {
           longitude,
           business_status,
           open_hours,
+          tabelog_url,
           tags_json,
           description,
           created_at,
@@ -428,7 +474,7 @@ function createDatabase(options = {}) {
           created_by,
           updated_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
         store.id,
@@ -440,6 +486,7 @@ function createDatabase(options = {}) {
         store.longitude,
         store.businessStatus,
         store.openHours,
+        store.tabelogUrl || buildTabelogSearchUrl(store),
         JSON.stringify(store.tags),
         store.description,
         audit.createdAt,
@@ -552,6 +599,7 @@ function createDatabase(options = {}) {
 }
 
 module.exports = {
+  buildTabelogSearchUrl,
   createDatabase,
   defaultDatabasePath,
 };

@@ -318,6 +318,7 @@ async function handleApi(request, response, url) {
         longitude: Number(payload.longitude),
         businessStatus: payload.businessStatus || "open",
         openHours: payload.openHours || "",
+        tabelogUrl: payload.tabelogUrl || "",
         tags: Array.isArray(payload.tags) ? payload.tags : [],
         description: payload.description || "",
         createdBy: payload.createdBy || actor,
