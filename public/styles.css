@@ -150,7 +150,8 @@ button {
 }
 
 .segment,
-.select {
+.select,
+.control-action {
   width: 100%;
   min-height: 40px;
   border: 1px solid var(--line);
@@ -168,6 +169,25 @@ button {
 
 .select {
   padding: 0 10px;
+}
+
+.control-action {
+  color: #fff;
+  border-color: var(--teal);
+  background: var(--teal);
+}
+
+.control-action:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.helper-text,
+.distance-text {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .map-stage {
@@ -273,6 +293,26 @@ button {
   font-weight: 800;
 }
 
+.user-marker {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 54%;
+  display: grid;
+  place-items: center;
+  min-width: 68px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--blue);
+  box-shadow: 0 10px 24px rgb(46 94 170 / 24%);
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .map-pin {
   position: absolute;
   z-index: 4;
@@ -372,7 +412,8 @@ button {
 .store-card p,
 .detail-empty,
 .meta,
-.detail-description {
+.detail-description,
+.location-badge {
   color: var(--muted);
 }
 
@@ -417,6 +458,20 @@ button {
 .detail-description {
   margin: 8px 0 14px;
   line-height: 1.7;
+}
+
+.location-badge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  margin: 4px 0 8px;
+  padding: 3px 9px;
+  border: 1px solid #b8d7d1;
+  border-radius: 999px;
+  background: #eef8f6;
+  color: #14665c;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .tag-list,

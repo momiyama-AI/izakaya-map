@@ -25,6 +25,12 @@
         </section>
 
         <section class="panel-section">
+          <h2>現在地</h2>
+          <button type="button" class="control-action" id="locateButton">現在地から探す</button>
+          <p class="helper-text" id="locationHint" aria-live="polite">未取得</p>
+        </section>
+
+        <section class="panel-section">
           <h2>ドリンク</h2>
           <div class="segmented vertical" id="drinkTabs">
             <button type="button" class="segment active" data-drink="highball">ハイボール</button>
@@ -38,6 +44,7 @@
           <select id="sortSelect" class="select">
             <option value="price_asc">安い順</option>
             <option value="freshness_desc">更新が新しい順</option>
+            <option value="distance_asc">現在地に近い順</option>
           </select>
         </section>
       </aside>
