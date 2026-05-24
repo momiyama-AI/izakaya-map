@@ -1,0 +1,110 @@
+# Izakaya Drink Price Map
+
+居酒屋ドリンク価格マップのMVP実装プロジェクトです。
+追加パッケージなしで動くように、初期構成はNode.js標準HTTPサーバーと静的Web画面で構成しています。
+
+## VS Codeで開発する
+
+VS Codeでこのフォルダ、または `izakaya-price-map.code-workspace` を開いてください。
+ターミナルから起動する場合は以下です。
+
+```powershell
+.\scripts\dev.ps1
+```
+
+起動後:
+
+- App: http://localhost:5173
+- Health: http://localhost:5173/api/v1/health
+- Areas: http://localhost:5173/api/v1/areas
+
+Google Mapsを表示する場合は、起動前にAPIキーを環境変数へ設定してください。
+未設定の場合は、開発用の簡易マップを表示します。
+
+```powershell
+$env:GOOGLE_MAPS_API_KEY = "YOUR_API_KEY"
+.\scripts\dev.ps1
+```
+
+VS Codeのタスクからも実行できます。
+
+- `Dev: start app`
+- `Deploy: local production`
+- `Test: smoke`
+- `Deploy: stop local`
+
+## ローカルデプロイ確認
+
+本番相当のポート `8080` でバックグラウンド起動します。
+
+```powershell
+.\scripts\deploy-local.ps1
+```
+
+起動後:
+
+- App: http://localhost:8080
+
+停止:
+
+```powershell
+.\scripts\stop-local.ps1
+```
+
+## Smoke Test
+
+```powershell
+.\scripts\smoke-test.ps1 -BaseUrl http://localhost:5173
+```
+
+ローカルデプロイ確認後は以下でも実行できます。
+
+```powershell
+.\scripts\smoke-test.ps1 -BaseUrl http://localhost:8080
+```
+
+## API
+
+代表的なAPI:
+
+- `GET /api/v1/health`
+- `GET /api/v1/config`
+- `GET /api/v1/areas`
+- `GET /api/v1/stores?area_id=AREA-SHINJUKU&drink_category=highball`
+- `GET /api/v1/stores/{store_id}`
+- `POST /api/v1/events`
+- `GET /api/v1/admin/events`
+- `POST /api/v1/admin/stores`
+- `POST /api/v1/admin/drink-prices`
+
+開発用の管理トークン:
+
+```text
+dev-admin-token
+```
+
+例:
+
+```powershell
+Invoke-RestMethod `
+  -Method POST `
+  -Uri http://localhost:8080/api/v1/admin/drink-prices `
+  -Headers @{ "x-admin-token" = "dev-admin-token" } `
+  -ContentType "application/json" `
+  -Body '{"storeId":"STORE-SJK-001","category":"highball","drinkName":"角ハイボール","priceYen":280,"taxIncluded":true,"acquiredAt":"2026-05-25","sourceType":"store_menu","verificationStatus":"verified"}'
+```
+
+## Docker
+
+Dockerが利用できる環境では、以下で本番相当の起動確認ができます。
+
+```powershell
+$env:GOOGLE_MAPS_API_KEY = "YOUR_API_KEY"
+docker compose up --build
+```
+
+App:
+
+```text
+http://localhost:8080
+```

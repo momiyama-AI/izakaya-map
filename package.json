@@ -1,0 +1,13 @@
+{
+  "name": "izakaya-price-map",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node src/server/server.js",
+    "start": "node src/server/server.js",
+    "smoke": "node src/server/smoke-test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

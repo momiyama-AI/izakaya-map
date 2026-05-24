@@ -1,0 +1,8 @@
+{
+  "editor.formatOnSave": true,
+  "files.encoding": "utf8",
+  "files.exclude": {
+    ".local": true
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell"
+}

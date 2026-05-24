@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: izakaya-price-map
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_MAP_ID
+        sync: false

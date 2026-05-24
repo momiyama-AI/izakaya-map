@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      ADMIN_TOKEN: dev-admin-token
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      GOOGLE_MAPS_MAP_ID: ${GOOGLE_MAPS_MAP_ID:-}
+    ports:
+      - "8080:8080"

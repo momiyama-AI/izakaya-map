@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>居酒屋ドリンク価格マップ</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Izakaya Drink Price Map</p>
+        <h1>居酒屋ドリンク価格マップ</h1>
+      </div>
+      <div class="header-actions">
+        <span class="status-pill" id="serviceStatus">API確認中</span>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <aside class="control-panel" aria-label="検索条件">
+        <section class="panel-section">
+          <h2>エリア</h2>
+          <div class="segmented" id="areaTabs"></div>
+        </section>
+
+        <section class="panel-section">
+          <h2>ドリンク</h2>
+          <div class="segmented vertical" id="drinkTabs">
+            <button type="button" class="segment active" data-drink="highball">ハイボール</button>
+            <button type="button" class="segment" data-drink="beer">生ビール</button>
+            <button type="button" class="segment" data-drink="lemon_sour">レモンサワー</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2>並び替え</h2>
+          <select id="sortSelect" class="select">
+            <option value="price_asc">安い順</option>
+            <option value="freshness_desc">更新が新しい順</option>
+          </select>
+        </section>
+      </aside>
+
+      <section class="map-stage" aria-label="地図">
+        <div class="map-toolbar">
+          <div>
+            <p class="eyebrow">Selected Area</p>
+            <h2 id="areaTitle">読み込み中</h2>
+          </div>
+          <button class="icon-button" id="refreshButton" type="button" aria-label="再読み込み" title="再読み込み">
+            ↻
+          </button>
+        </div>
+        <div class="map-canvas" id="mapCanvas">
+          <div class="station-marker" id="stationMarker">駅</div>
+        </div>
+      </section>
+
+      <section class="results-panel" aria-label="店舗一覧">
+        <div class="results-header">
+          <div>
+            <p class="eyebrow">Search Results</p>
+            <h2 id="resultTitle">店舗</h2>
+          </div>
+          <span id="resultCount" class="count-badge">0件</span>
+        </div>
+        <div class="store-list" id="storeList"></div>
+      </section>
+
+      <section class="detail-panel" aria-label="店舗詳細" data-testid="store-detail">
+        <div id="storeDetail" class="detail-empty">店舗を選択してください</div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
+
