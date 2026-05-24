@@ -38,9 +38,10 @@ if (Test-Path $pidFile) {
 Stop-ProjectListener -Port 8080 -ProjectRoot $projectRoot
 
 $serverPath = Join-Path $projectRoot "src\server\server.js"
+$databasePath = if ($env:DATABASE_PATH) { $env:DATABASE_PATH.Replace("'", "''") } else { (Join-Path $projectRoot ".local\izakaya-map.sqlite").Replace("'", "''") }
 $googleMapsApiKey = if ($env:GOOGLE_MAPS_API_KEY) { $env:GOOGLE_MAPS_API_KEY.Replace("'", "''") } else { "" }
 $googleMapsMapId = if ($env:GOOGLE_MAPS_MAP_ID) { $env:GOOGLE_MAPS_MAP_ID.Replace("'", "''") } else { "" }
-$command = "`$env:PORT='8080'; `$env:NODE_ENV='production'; `$env:ADMIN_TOKEN='dev-admin-token'; `$env:GOOGLE_MAPS_API_KEY='$googleMapsApiKey'; `$env:GOOGLE_MAPS_MAP_ID='$googleMapsMapId'; & `"$nodePath`" `"$serverPath`" *> `"$logFile`""
+$command = "`$env:PORT='8080'; `$env:NODE_ENV='production'; `$env:ADMIN_TOKEN='dev-admin-token'; `$env:DATABASE_PATH='$databasePath'; `$env:GOOGLE_MAPS_API_KEY='$googleMapsApiKey'; `$env:GOOGLE_MAPS_MAP_ID='$googleMapsMapId'; & `"$nodePath`" `"$serverPath`" *> `"$logFile`""
 
 $process = Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $command -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
 $process.Id | Set-Content $pidFile

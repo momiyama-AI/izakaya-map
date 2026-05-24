@@ -28,10 +28,31 @@ $env:GOOGLE_MAPS_API_KEY = "YOUR_API_KEY"
 
 VS Codeのタスクからも実行できます。
 
+- `DB: initialize SQLite`
 - `Dev: start app`
 - `Deploy: local production`
 - `Test: smoke`
 - `Deploy: stop local`
+
+## DB
+
+店舗、エリア、ドリンク価格、イベントログはSQLiteに保存します。
+初回起動時に `.local/izakaya-map.sqlite` が自動作成され、`src/data/seed-data.js` の初期データが投入されます。
+
+明示的に初期化する場合:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\init-db.ps1
+```
+
+DBの保存先を変える場合:
+
+```powershell
+$env:DATABASE_PATH = "C:\path\to\izakaya-map.sqlite"
+.\scripts\dev.ps1
+```
+
+DBファイルは `.gitignore` で除外しています。
 
 ## ローカルデプロイ確認
 
@@ -76,6 +97,8 @@ VS Codeのタスクからも実行できます。
 - `GET /api/v1/admin/events`
 - `POST /api/v1/admin/stores`
 - `POST /api/v1/admin/drink-prices`
+
+管理APIで登録した店舗・価格もSQLiteに保存されます。
 
 開発用の管理トークン:
 

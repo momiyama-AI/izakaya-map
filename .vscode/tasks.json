@@ -2,6 +2,18 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "DB: initialize SQLite",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\init-db.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Dev: start app",
       "type": "shell",
       "command": "powershell",

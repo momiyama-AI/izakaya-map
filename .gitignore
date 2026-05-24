@@ -2,6 +2,8 @@ node_modules/
 .env
 .local/
 *.log
+*.sqlite
+*.sqlite-*
 dist/
 coverage/
 .DS_Store

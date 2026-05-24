@@ -5,7 +5,13 @@ services:
       NODE_ENV: production
       PORT: 8080
       ADMIN_TOKEN: dev-admin-token
+      DATABASE_PATH: /app/.local/izakaya-map.sqlite
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
       GOOGLE_MAPS_MAP_ID: ${GOOGLE_MAPS_MAP_ID:-}
     ports:
       - "8080:8080"
+    volumes:
+      - app-data:/app/.local
+
+volumes:
+  app-data:

@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { URL } = require("node:url");
 
-const { areas, stores, drinkPrices, eventLogs } = require("../data/seed-data");
+const { createDatabase } = require("../data/database");
 const {
   calculateFreshnessStatus,
   canPublishDrinkPrice,
@@ -17,6 +17,7 @@ const port = Number(process.env.PORT || 5173);
 const adminToken = process.env.ADMIN_TOKEN || "change-me-local-admin-token";
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY || "";
 const googleMapsMapId = process.env.GOOGLE_MAPS_MAP_ID || "";
+const database = createDatabase();
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -117,8 +118,8 @@ function requireAdmin(request, response) {
 }
 
 function enrichStore(store, options = {}) {
-  const prices = drinkPrices
-    .filter((price) => price.storeId === store.id)
+  const prices = database
+    .listDrinkPricesByStoreId(store.id)
     .filter(canPublishDrinkPrice)
     .map((price) => ({
       ...price,
@@ -161,8 +162,8 @@ function listStores(url) {
   const hasOrigin = Number.isFinite(latitude) && Number.isFinite(longitude);
   const origin = hasOrigin ? { latitude, longitude } : null;
 
-  const filteredStores = stores
-    .filter((store) => !areaId || store.areaId === areaId)
+  const filteredStores = database
+    .listStores(areaId)
     .map((store) => enrichStore(store, { category, origin }))
     .filter((store) => store.selectedPrice)
     .filter((store) => {
@@ -198,7 +199,7 @@ function listStores(url) {
 
 function createEvent(payload) {
   const event = {
-    id: `EVT-${String(eventLogs.length + 1).padStart(5, "0")}`,
+    id: `EVT-${String(database.countEvents() + 1).padStart(5, "0")}`,
     type: payload.type || "unknown",
     storeId: payload.storeId || null,
     areaId: payload.areaId || null,
@@ -206,8 +207,7 @@ function createEvent(payload) {
     metadata: payload.metadata || {},
     createdAt: new Date().toISOString(),
   };
-  eventLogs.push(event);
-  return event;
+  return database.insertEvent(event);
 }
 
 async function handleApi(request, response, url) {
@@ -217,6 +217,10 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, {
       status: "ok",
       service: "izakaya-price-map",
+      database: {
+        provider: "sqlite",
+        path: database.databasePath,
+      },
       timestamp: new Date().toISOString(),
     });
     return true;
@@ -234,7 +238,7 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && pathname === "/api/v1/areas") {
-    sendJson(response, 200, { areas });
+    sendJson(response, 200, { areas: database.listAreas() });
     return true;
   }
 
@@ -245,7 +249,7 @@ async function handleApi(request, response, url) {
 
   const storeMatch = pathname.match(/^\/api\/v1\/stores\/([^/]+)$/);
   if (request.method === "GET" && storeMatch) {
-    const store = stores.find((candidate) => candidate.id === storeMatch[1]);
+    const store = database.getStoreById(storeMatch[1]);
     if (!store) {
       sendError(response, 404, "Store was not found.");
       return true;
@@ -270,7 +274,7 @@ async function handleApi(request, response, url) {
       return true;
     }
 
-    sendJson(response, 200, { events: eventLogs });
+    sendJson(response, 200, { events: database.listEvents() });
     return true;
   }
 
@@ -294,8 +298,8 @@ async function handleApi(request, response, url) {
         tags: Array.isArray(payload.tags) ? payload.tags : [],
         description: payload.description || "",
       };
-      stores.push(store);
-      sendJson(response, 201, { store: enrichStore(store) });
+      const createdStore = database.insertStore(store);
+      sendJson(response, 201, { store: enrichStore(createdStore) });
     } catch (error) {
       sendError(response, 400, "Invalid store payload.", error.message);
     }
@@ -326,8 +330,7 @@ async function handleApi(request, response, url) {
         return true;
       }
 
-      drinkPrices.push(price);
-      sendJson(response, 201, { price });
+      sendJson(response, 201, { price: database.insertDrinkPrice(price) });
     } catch (error) {
       sendError(response, 400, "Invalid drink price payload.", error.message);
     }
