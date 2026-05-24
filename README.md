@@ -54,6 +54,29 @@ $env:DATABASE_PATH = "C:\path\to\izakaya-map.sqlite"
 
 DBファイルは `.gitignore` で除外しています。
 
+主要テーブルには監査用の列があります。
+
+- `created_at`: 作成日時
+- `updated_at`: 更新日時
+- `created_by`: 作成者
+- `updated_by`: 更新者
+
+既存の初期データは `system` 作成扱いです。
+管理APIから登録する場合は `x-admin-user` ヘッダーを指定すると作成者/更新者に反映されます。
+
+確認SQL:
+
+```sql
+SELECT
+  id,
+  name,
+  created_at,
+  updated_at,
+  created_by,
+  updated_by
+FROM stores;
+```
+
 ## ローカルデプロイ確認
 
 本番相当のポート `8080` でバックグラウンド起動します。

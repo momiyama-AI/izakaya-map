@@ -6,6 +6,40 @@ const { areas, stores, drinkPrices } = require("./seed-data");
 
 const rootDir = path.resolve(__dirname, "../..");
 const defaultDatabasePath = path.join(rootDir, ".local", "izakaya-map.sqlite");
+const systemActor = "system";
+
+const auditColumns = [
+  { name: "created_at", definition: "TEXT NOT NULL DEFAULT ''" },
+  { name: "updated_at", definition: "TEXT NOT NULL DEFAULT ''" },
+  { name: "created_by", definition: "TEXT NOT NULL DEFAULT 'system'" },
+  { name: "updated_by", definition: "TEXT NOT NULL DEFAULT 'system'" },
+];
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function auditFromRow(row) {
+  return {
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
+  };
+}
+
+function auditForInsert(record = {}, actor = systemActor) {
+  const timestamp = record.createdAt || record.updatedAt || nowIso();
+  const createdBy = record.createdBy || record.updatedBy || actor;
+  const updatedBy = record.updatedBy || createdBy;
+
+  return {
+    createdAt: timestamp,
+    updatedAt: record.updatedAt || timestamp,
+    createdBy,
+    updatedBy,
+  };
+}
 
 function toArea(row) {
   return {
@@ -17,6 +51,7 @@ function toArea(row) {
       longitude: row.center_longitude,
     },
     description: row.description,
+    ...auditFromRow(row),
   };
 }
 
@@ -33,6 +68,7 @@ function toStore(row) {
     openHours: row.open_hours,
     tags: JSON.parse(row.tags_json || "[]"),
     description: row.description,
+    ...auditFromRow(row),
   };
 }
 
@@ -47,6 +83,7 @@ function toDrinkPrice(row) {
     acquiredAt: row.acquired_at,
     sourceType: row.source_type,
     verificationStatus: row.verification_status,
+    ...auditFromRow(row),
   };
 }
 
@@ -59,7 +96,37 @@ function toEvent(row) {
     drinkCategory: row.drink_category,
     metadata: JSON.parse(row.metadata_json || "{}"),
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    createdBy: row.created_by,
+    updatedBy: row.updated_by,
   };
+}
+
+function getTableColumns(db, tableName) {
+  return db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+}
+
+function addMissingColumns(db, tableName, columns) {
+  const existingColumns = getTableColumns(db, tableName);
+  for (const column of columns) {
+    if (!existingColumns.includes(column.name)) {
+      db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.definition}`);
+    }
+  }
+}
+
+function backfillAuditColumns(db, tableName) {
+  const timestamp = nowIso();
+  db.prepare(
+    `
+    UPDATE ${tableName}
+    SET
+      created_at = CASE WHEN created_at = '' THEN ? ELSE created_at END,
+      updated_at = CASE WHEN updated_at = '' THEN ? ELSE updated_at END,
+      created_by = CASE WHEN created_by = '' THEN ? ELSE created_by END,
+      updated_by = CASE WHEN updated_by = '' THEN ? ELSE updated_by END
+  `,
+  ).run(timestamp, timestamp, systemActor, systemActor);
 }
 
 function ensureSchema(db) {
@@ -73,7 +140,11 @@ function ensureSchema(db) {
       center_latitude REAL NOT NULL,
       center_longitude REAL NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
-      description TEXT NOT NULL DEFAULT ''
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL DEFAULT 'system',
+      updated_by TEXT NOT NULL DEFAULT 'system'
     );
 
     CREATE TABLE IF NOT EXISTS stores (
@@ -87,7 +158,11 @@ function ensureSchema(db) {
       business_status TEXT NOT NULL DEFAULT 'open',
       open_hours TEXT NOT NULL DEFAULT '',
       tags_json TEXT NOT NULL DEFAULT '[]',
-      description TEXT NOT NULL DEFAULT ''
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL DEFAULT 'system',
+      updated_by TEXT NOT NULL DEFAULT 'system'
     );
 
     CREATE INDEX IF NOT EXISTS idx_stores_area_id ON stores(area_id);
@@ -102,7 +177,11 @@ function ensureSchema(db) {
       tax_included INTEGER NOT NULL DEFAULT 1,
       acquired_at TEXT NOT NULL,
       source_type TEXT NOT NULL,
-      verification_status TEXT NOT NULL DEFAULT 'verified'
+      verification_status TEXT NOT NULL DEFAULT 'verified',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL DEFAULT 'system',
+      updated_by TEXT NOT NULL DEFAULT 'system'
     );
 
     CREATE INDEX IF NOT EXISTS idx_drink_prices_store_id ON drink_prices(store_id);
@@ -115,13 +194,21 @@ function ensureSchema(db) {
       area_id TEXT,
       drink_category TEXT,
       metadata_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT '',
+      created_by TEXT NOT NULL DEFAULT 'system',
+      updated_by TEXT NOT NULL DEFAULT 'system'
     );
   `);
 
-  const areaColumns = db.prepare("PRAGMA table_info(areas)").all().map((column) => column.name);
+  const areaColumns = getTableColumns(db, "areas");
   if (!areaColumns.includes("sort_order")) {
     db.exec("ALTER TABLE areas ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+  }
+
+  for (const tableName of ["areas", "stores", "drink_prices", "event_logs"]) {
+    addMissingColumns(db, tableName, auditColumns);
+    backfillAuditColumns(db, tableName);
   }
 }
 
@@ -131,9 +218,21 @@ function seedInitialData(db) {
   const priceCount = db.prepare("SELECT COUNT(*) AS count FROM drink_prices").get().count;
 
   if (areaCount === 0) {
+    const audit = auditForInsert({}, systemActor);
     const insertArea = db.prepare(`
-      INSERT INTO areas (id, name, station, center_latitude, center_longitude, description)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO areas (
+        id,
+        name,
+        station,
+        center_latitude,
+        center_longitude,
+        description,
+        created_at,
+        updated_at,
+        created_by,
+        updated_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const area of areas) {
@@ -144,6 +243,10 @@ function seedInitialData(db) {
         area.center.latitude,
         area.center.longitude,
         area.description,
+        audit.createdAt,
+        audit.updatedAt,
+        audit.createdBy,
+        audit.updatedBy,
       );
     }
   }
@@ -152,6 +255,7 @@ function seedInitialData(db) {
   areas.forEach((area, index) => updateAreaOrder.run(index + 1, area.id));
 
   if (storeCount === 0) {
+    const audit = auditForInsert({}, systemActor);
     const insertStore = db.prepare(`
       INSERT INTO stores (
         id,
@@ -164,9 +268,13 @@ function seedInitialData(db) {
         business_status,
         open_hours,
         tags_json,
-        description
+        description,
+        created_at,
+        updated_at,
+        created_by,
+        updated_by
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const store of stores) {
@@ -182,11 +290,16 @@ function seedInitialData(db) {
         store.openHours,
         JSON.stringify(store.tags),
         store.description,
+        audit.createdAt,
+        audit.updatedAt,
+        audit.createdBy,
+        audit.updatedBy,
       );
     }
   }
 
   if (priceCount === 0) {
+    const audit = auditForInsert({}, systemActor);
     const insertPrice = db.prepare(`
       INSERT INTO drink_prices (
         id,
@@ -197,9 +310,13 @@ function seedInitialData(db) {
         tax_included,
         acquired_at,
         source_type,
-        verification_status
+        verification_status,
+        created_at,
+        updated_at,
+        created_by,
+        updated_by
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const price of drinkPrices) {
@@ -213,6 +330,10 @@ function seedInitialData(db) {
         price.acquiredAt,
         price.sourceType,
         price.verificationStatus,
+        audit.createdAt,
+        audit.updatedAt,
+        audit.createdBy,
+        audit.updatedBy,
       );
     }
   }
@@ -233,7 +354,7 @@ function createDatabase(options = {}) {
       return db
         .prepare(
           `
-          SELECT id, name, station, center_latitude, center_longitude, description
+          SELECT *
           FROM areas
           ORDER BY sort_order, name
         `,
@@ -286,7 +407,8 @@ function createDatabase(options = {}) {
         .map(toDrinkPrice);
     },
 
-    insertStore(store) {
+    insertStore(store, actor = systemActor) {
+      const audit = auditForInsert(store, actor);
       db.prepare(
         `
         INSERT INTO stores (
@@ -300,9 +422,13 @@ function createDatabase(options = {}) {
           business_status,
           open_hours,
           tags_json,
-          description
+          description,
+          created_at,
+          updated_at,
+          created_by,
+          updated_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
         store.id,
@@ -316,12 +442,17 @@ function createDatabase(options = {}) {
         store.openHours,
         JSON.stringify(store.tags),
         store.description,
+        audit.createdAt,
+        audit.updatedAt,
+        audit.createdBy,
+        audit.updatedBy,
       );
 
       return this.getStoreById(store.id);
     },
 
-    insertDrinkPrice(price) {
+    insertDrinkPrice(price, actor = systemActor) {
+      const audit = auditForInsert(price, actor);
       db.prepare(
         `
         INSERT INTO drink_prices (
@@ -333,9 +464,13 @@ function createDatabase(options = {}) {
           tax_included,
           acquired_at,
           source_type,
-          verification_status
+          verification_status,
+          created_at,
+          updated_at,
+          created_by,
+          updated_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
         price.id,
@@ -347,12 +482,20 @@ function createDatabase(options = {}) {
         price.acquiredAt,
         price.sourceType,
         price.verificationStatus,
+        audit.createdAt,
+        audit.updatedAt,
+        audit.createdBy,
+        audit.updatedBy,
       );
 
-      return price;
+      return {
+        ...price,
+        ...audit,
+      };
     },
 
-    insertEvent(event) {
+    insertEvent(event, actor = systemActor) {
+      const audit = auditForInsert(event, actor);
       db.prepare(
         `
         INSERT INTO event_logs (
@@ -362,9 +505,12 @@ function createDatabase(options = {}) {
           area_id,
           drink_category,
           metadata_json,
-          created_at
+          created_at,
+          updated_at,
+          created_by,
+          updated_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
         event.id,
@@ -373,10 +519,16 @@ function createDatabase(options = {}) {
         event.areaId,
         event.drinkCategory,
         JSON.stringify(event.metadata),
-        event.createdAt,
+        audit.createdAt,
+        audit.updatedAt,
+        audit.createdBy,
+        audit.updatedBy,
       );
 
-      return event;
+      return {
+        ...event,
+        ...audit,
+      };
     },
 
     countEvents() {

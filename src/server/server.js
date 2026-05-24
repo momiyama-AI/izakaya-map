@@ -117,6 +117,15 @@ function requireAdmin(request, response) {
   return true;
 }
 
+function getActor(request, fallback = "app") {
+  const headerValue = request.headers["x-admin-user"] || request.headers["x-user"];
+  if (Array.isArray(headerValue)) {
+    return headerValue[0] || fallback;
+  }
+
+  return headerValue || fallback;
+}
+
 function enrichStore(store, options = {}) {
   const prices = database
     .listDrinkPricesByStoreId(store.id)
@@ -197,7 +206,7 @@ function listStores(url) {
   };
 }
 
-function createEvent(payload) {
+function createEvent(payload, actor = "app") {
   const event = {
     id: `EVT-${String(database.countEvents() + 1).padStart(5, "0")}`,
     type: payload.type || "unknown",
@@ -206,8 +215,10 @@ function createEvent(payload) {
     drinkCategory: payload.drinkCategory || null,
     metadata: payload.metadata || {},
     createdAt: new Date().toISOString(),
+    createdBy: payload.createdBy || actor,
+    updatedBy: payload.updatedBy || payload.createdBy || actor,
   };
-  return database.insertEvent(event);
+  return database.insertEvent(event, actor);
 }
 
 async function handleApi(request, response, url) {
@@ -262,7 +273,7 @@ async function handleApi(request, response, url) {
   if (request.method === "POST" && pathname === "/api/v1/events") {
     try {
       const payload = await parseRequestBody(request);
-      sendJson(response, 201, { event: createEvent(payload) });
+      sendJson(response, 201, { event: createEvent(payload, getActor(request, "app")) });
     } catch (error) {
       sendError(response, 400, "Invalid event payload.", error.message);
     }
@@ -284,6 +295,7 @@ async function handleApi(request, response, url) {
     }
 
     try {
+      const actor = getActor(request, "admin");
       const payload = await parseRequestBody(request);
       const store = {
         id: `STORE-${Date.now()}`,
@@ -297,8 +309,10 @@ async function handleApi(request, response, url) {
         openHours: payload.openHours || "",
         tags: Array.isArray(payload.tags) ? payload.tags : [],
         description: payload.description || "",
+        createdBy: payload.createdBy || actor,
+        updatedBy: payload.updatedBy || payload.createdBy || actor,
       };
-      const createdStore = database.insertStore(store);
+      const createdStore = database.insertStore(store, actor);
       sendJson(response, 201, { store: enrichStore(createdStore) });
     } catch (error) {
       sendError(response, 400, "Invalid store payload.", error.message);
@@ -312,6 +326,7 @@ async function handleApi(request, response, url) {
     }
 
     try {
+      const actor = getActor(request, "admin");
       const payload = await parseRequestBody(request);
       const price = {
         id: `PRICE-${Date.now()}`,
@@ -323,6 +338,8 @@ async function handleApi(request, response, url) {
         acquiredAt: payload.acquiredAt,
         sourceType: payload.sourceType,
         verificationStatus: payload.verificationStatus || "verified",
+        createdBy: payload.createdBy || actor,
+        updatedBy: payload.updatedBy || payload.createdBy || actor,
       };
 
       if (!canPublishDrinkPrice(price)) {
@@ -330,7 +347,7 @@ async function handleApi(request, response, url) {
         return true;
       }
 
-      sendJson(response, 201, { price: database.insertDrinkPrice(price) });
+      sendJson(response, 201, { price: database.insertDrinkPrice(price, actor) });
     } catch (error) {
       sendError(response, 400, "Invalid drink price payload.", error.message);
     }
