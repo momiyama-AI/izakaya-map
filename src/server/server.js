@@ -174,7 +174,6 @@ function listStores(url) {
   const filteredStores = database
     .listStores(areaId)
     .map((store) => enrichStore(store, { category, origin }))
-    .filter((store) => store.selectedPrice)
     .filter((store) => {
       if (!origin || !Number.isFinite(radiusMeters)) {
         return true;
@@ -186,6 +185,18 @@ function listStores(url) {
   const sortedStores = [...filteredStores].sort((a, b) => {
     if (sort === "distance_asc" && origin) {
       return a.distanceMeters - b.distanceMeters;
+    }
+
+    if (!a.selectedPrice && !b.selectedPrice) {
+      return a.name.localeCompare(b.name, "ja-JP");
+    }
+
+    if (!a.selectedPrice) {
+      return 1;
+    }
+
+    if (!b.selectedPrice) {
+      return -1;
     }
 
     if (sort === "freshness_desc") {

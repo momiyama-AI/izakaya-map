@@ -110,6 +110,23 @@ button {
   background: #fff0ee;
 }
 
+.freshness.unknown {
+  color: #4f5f67;
+  border-color: #c8d3d8;
+  background: #f2f6f8;
+}
+
+.source-link {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.source-link:hover {
+  color: var(--accent-strong);
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 230px minmax(380px, 1fr) minmax(310px, 390px);

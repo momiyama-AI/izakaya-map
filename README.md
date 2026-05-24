@@ -140,6 +140,24 @@ Invoke-RestMethod `
   -Body '{"storeId":"STORE-SJK-001","category":"highball","drinkName":"角ハイボール","priceYen":280,"taxIncluded":true,"acquiredAt":"2026-05-25","sourceType":"store_menu","verificationStatus":"verified"}'
 ```
 
+## OpenStreetMap store import
+
+Use the Overpass API to add location-only store rows for Shinjuku and Nakano. The default target is 100 OSM rows per area. Drink prices are not inserted by this script because they need separate menu verification.
+
+```powershell
+.\scripts\node.cmd --% scripts/import-osm-stores.js
+```
+
+Optional:
+
+```powershell
+$env:OSM_IMPORT_TARGET_PER_AREA = "100"
+$env:OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
+.\scripts\node.cmd --% scripts/import-osm-stores.js
+```
+
+Store location data imported by this script is sourced from OpenStreetMap and Overpass API. Keep attribution visible in the app and review ODbL obligations before redistribution.
+
 ## Docker
 
 Dockerが利用できる環境では、以下で本番相当の起動確認ができます。

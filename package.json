@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "db:init": "node src/data/init-db.js",
+    "db:import-osm": "node scripts/import-osm-stores.js",
     "dev": "node src/server/server.js",
     "start": "node src/server/server.js",
     "smoke": "node src/server/smoke-test.js"

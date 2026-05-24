@@ -31,6 +31,9 @@ const drinkMarkerStyles = {
   },
 };
 
+const unknownPriceLabel = "\u4fa1\u683c\u672a\u78ba\u8a8d";
+const unknownFreshnessLabel = "\u672a\u78ba\u8a8d";
+
 const state = {
   areas: [],
   config: { maps: { provider: "fallback" } },
@@ -156,6 +159,29 @@ function getDrinkMarkerStyle(category = state.selectedDrink) {
   return drinkMarkerStyles[category] || drinkMarkerStyles.highball;
 }
 
+function storePriceLabel(store) {
+  return store.selectedPrice?.formattedPrice || unknownPriceLabel;
+}
+
+function storeDrinkNameLabel(store) {
+  return (
+    store.selectedPrice?.drinkName ||
+    `${drinkLabels[state.selectedDrink]}\u306e\u4fa1\u683c\u3092\u8abf\u67fb\u4e2d`
+  );
+}
+
+function freshnessBadge(store) {
+  if (!store.selectedPrice) {
+    return `<span class="freshness unknown">${unknownFreshnessLabel}</span>`;
+  }
+
+  return `
+    <span class="freshness ${store.selectedPrice.freshnessStatus}">
+      ${formatFreshnessLabel(store.selectedPrice.freshnessStatus)}
+    </span>
+  `;
+}
+
 function escapeSvgText(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -192,7 +218,7 @@ function createPriceMarkerSvg(store, active = false) {
   const style = getDrinkMarkerStyle(store.selectedPrice?.category);
   const fill = active ? style.activeColor : style.color;
   const stroke = active ? "#1f1b17" : "#ffffff";
-  const price = escapeSvgText(store.selectedPrice?.formattedPrice || "");
+  const price = escapeSvgText(storePriceLabel(store));
   const label = escapeSvgText(style.shortLabel);
   const icon = drinkIconPath(style);
 
@@ -325,7 +351,7 @@ function renderFallbackMapPins() {
 
   state.stores.forEach((store, index) => {
     const position = pinPosition(store, index);
-    const style = getDrinkMarkerStyle(store.selectedPrice.category);
+    const style = getDrinkMarkerStyle(store.selectedPrice?.category);
     const pin = document.createElement("button");
     pin.type = "button";
     pin.className = `map-pin drink-${style.key}${
@@ -339,7 +365,7 @@ function renderFallbackMapPins() {
     pin.dataset.storeId = store.id;
     pin.innerHTML = `
       <span class="drink-code">${style.shortLabel}</span>
-      <strong>${store.selectedPrice.formattedPrice}</strong>
+      <strong>${storePriceLabel(store)}</strong>
       <span>${store.name}</span>
     `;
     pin.addEventListener("click", () => selectStore(store.id));
@@ -452,14 +478,12 @@ function renderStoreList() {
     card.innerHTML = `
       <div class="store-card-top">
         <h3>${store.name}</h3>
-        <span class="price">${store.selectedPrice.formattedPrice}</span>
+        <span class="price">${storePriceLabel(store)}</span>
       </div>
       <p>${store.stationExit} / ${store.openHours}</p>
       <div class="price-line">
-        <p>${store.selectedPrice.drinkName}</p>
-        <span class="freshness ${store.selectedPrice.freshnessStatus}">
-          ${formatFreshnessLabel(store.selectedPrice.freshnessStatus)}
-        </span>
+        <p>${storeDrinkNameLabel(store)}</p>
+        ${freshnessBadge(store)}
       </div>
       ${distanceText ? `<p class="distance-text">現在地から ${distanceText}</p>` : ""}
     `;
@@ -477,6 +501,29 @@ function renderDetail() {
   }
 
   const distanceText = formatDistance(store.distanceMeters);
+  const priceRowsHtml =
+    store.prices.length > 0
+      ? store.prices
+          .map(
+            (price) => `
+              <div class="price-row">
+                <div>
+                  <strong>${price.drinkName}</strong>
+                  <small>${price.acquiredAt} / ${price.sourceType}</small>
+                </div>
+                <span class="price">${price.formattedPrice}</span>
+              </div>
+            `,
+          )
+          .join("")
+      : `
+          <div class="price-row price-row-empty">
+            <div>
+              <strong>${unknownPriceLabel}</strong>
+              <small>\u30c9\u30ea\u30f3\u30af\u4fa1\u683c\u306f\u672a\u53ce\u96c6\u3067\u3059</small>
+            </div>
+          </div>
+        `;
   elements.storeDetail.className = "";
   elements.storeDetail.innerHTML = `
     <div class="detail-grid">
@@ -492,19 +539,7 @@ function renderDetail() {
       </div>
       <div>
         <div class="price-stack">
-          ${store.prices
-            .map(
-              (price) => `
-              <div class="price-row">
-                <div>
-                  <strong>${price.drinkName}</strong>
-                  <small>${price.acquiredAt} / ${price.sourceType}</small>
-                </div>
-                <span class="price">${price.formattedPrice}</span>
-              </div>
-            `,
-            )
-            .join("")}
+          ${priceRowsHtml}
         </div>
         <div class="detail-actions">
           <span class="meta">${store.openHours}</span>
