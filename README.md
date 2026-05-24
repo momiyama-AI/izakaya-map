@@ -89,6 +89,7 @@ FROM stores;
 起動後:
 
 - App: http://localhost:8080
+- Admin: http://localhost:8080/admin.html
 
 停止:
 

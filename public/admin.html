@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>管理画面 | Izakaya Drink Price Map</title>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <header class="admin-header">
+      <div>
+        <p class="eyebrow">Admin Console</p>
+        <h1>管理画面</h1>
+      </div>
+      <nav class="admin-nav" aria-label="画面">
+        <a href="/">マップ</a>
+        <a href="/admin.html" aria-current="page">管理</a>
+      </nav>
+    </header>
+
+    <main class="admin-shell">
+      <section class="auth-strip" aria-label="認証">
+        <label>
+          <span>管理トークン</span>
+          <input id="adminToken" type="password" autocomplete="current-password" placeholder="dev-admin-token" />
+        </label>
+        <label>
+          <span>更新者</span>
+          <input id="adminUser" type="text" autocomplete="username" />
+        </label>
+        <button id="saveAuthButton" type="button">接続</button>
+        <span id="adminStatus" class="status-pill">未接続</span>
+      </section>
+
+      <section class="metric-grid" aria-label="サマリー">
+        <div class="metric">
+          <span>店舗</span>
+          <strong id="storeMetric">0</strong>
+        </div>
+        <div class="metric">
+          <span>価格</span>
+          <strong id="priceMetric">0</strong>
+        </div>
+        <div class="metric">
+          <span>価格未確認</span>
+          <strong id="pendingMetric">0</strong>
+        </div>
+        <div class="metric">
+          <span>ログ</span>
+          <strong id="eventMetric">0</strong>
+        </div>
+      </section>
+
+      <section class="workspace-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Store</p>
+              <h2>店舗登録</h2>
+            </div>
+          </div>
+          <form id="storeForm" class="form-grid">
+            <label>
+              <span>エリア</span>
+              <select id="storeArea" name="areaId" required></select>
+            </label>
+            <label>
+              <span>店舗名</span>
+              <input name="name" type="text" required />
+            </label>
+            <label class="span-2">
+              <span>住所</span>
+              <input name="address" type="text" required />
+            </label>
+            <label>
+              <span>最寄り/出口</span>
+              <input name="stationExit" type="text" />
+            </label>
+            <label>
+              <span>営業時間</span>
+              <input name="openHours" type="text" placeholder="17:00-24:00" />
+            </label>
+            <label>
+              <span>緯度</span>
+              <input name="latitude" type="number" step="0.000001" required />
+            </label>
+            <label>
+              <span>経度</span>
+              <input name="longitude" type="number" step="0.000001" required />
+            </label>
+            <label>
+              <span>営業状態</span>
+              <select name="businessStatus">
+                <option value="open">営業中</option>
+                <option value="unknown">未確認</option>
+                <option value="closed">閉店</option>
+              </select>
+            </label>
+            <label>
+              <span>タグ</span>
+              <input name="tags" type="text" placeholder="居酒屋, 駅近" />
+            </label>
+            <label class="span-2">
+              <span>食べログURL</span>
+              <input name="tabelogUrl" type="url" placeholder="https://tabelog.com/..." />
+            </label>
+            <label class="span-2">
+              <span>説明</span>
+              <textarea name="description" rows="3"></textarea>
+            </label>
+            <button type="submit" class="primary-action">店舗を登録</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Drink Price</p>
+              <h2>価格登録</h2>
+            </div>
+          </div>
+          <form id="priceForm" class="form-grid">
+            <label class="span-2">
+              <span>店舗</span>
+              <select id="priceStore" name="storeId" required></select>
+            </label>
+            <label>
+              <span>カテゴリ</span>
+              <select name="category" required>
+                <option value="highball">ハイボール</option>
+                <option value="beer">生ビール</option>
+                <option value="lemon_sour">レモンサワー</option>
+              </select>
+            </label>
+            <label>
+              <span>商品名</span>
+              <input name="drinkName" type="text" required />
+            </label>
+            <label>
+              <span>価格</span>
+              <input name="priceYen" type="number" min="1" step="1" required />
+            </label>
+            <label>
+              <span>取得日</span>
+              <input id="acquiredAt" name="acquiredAt" type="date" required />
+            </label>
+            <label>
+              <span>出典</span>
+              <select name="sourceType" required>
+                <option value="store_menu">店頭メニュー</option>
+                <option value="web_menu">Webメニュー</option>
+                <option value="user_report">ユーザー報告</option>
+              </select>
+            </label>
+            <label>
+              <span>検証</span>
+              <select name="verificationStatus" required>
+                <option value="verified">確認済み</option>
+              </select>
+            </label>
+            <label class="check-row span-2">
+              <input name="taxIncluded" type="checkbox" checked />
+              <span>税込価格</span>
+            </label>
+            <button type="submit" class="primary-action">価格を登録</button>
+          </form>
+        </section>
+      </section>
+
+      <section class="data-grid">
+        <section class="panel table-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Stores</p>
+              <h2>店舗一覧</h2>
+            </div>
+            <div class="table-controls">
+              <select id="areaFilter" aria-label="エリア"></select>
+              <input id="storeSearch" type="search" placeholder="店舗検索" />
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>店舗</th>
+                  <th>エリア</th>
+                  <th>価格</th>
+                  <th>更新者</th>
+                  <th>リンク</th>
+                </tr>
+              </thead>
+              <tbody id="storeTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Audit</p>
+              <h2>イベントログ</h2>
+            </div>
+            <button id="refreshEventsButton" type="button" class="ghost-action">更新</button>
+          </div>
+          <div id="eventList" class="event-list"></div>
+        </section>
+      </section>
+
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+    </main>
+
+    <script src="/admin.js" type="module"></script>
+  </body>
+</html>

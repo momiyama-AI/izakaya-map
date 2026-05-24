@@ -60,7 +60,8 @@ function safeFilePath(requestPath) {
 
 function serveStatic(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
-  const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
+  const pathname =
+    url.pathname === "/" ? "/index.html" : url.pathname === "/admin" ? "/admin.html" : url.pathname;
   const filePath = safeFilePath(pathname);
 
   if (!filePath) {
