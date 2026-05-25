@@ -498,6 +498,58 @@ function createDatabase(options = {}) {
       return this.getStoreById(store.id);
     },
 
+    updateStore(storeId, store, actor = systemActor) {
+      const existingStore = this.getStoreById(storeId);
+      if (!existingStore) {
+        return null;
+      }
+
+      const timestamp = nowIso();
+      const nextStore = {
+        ...existingStore,
+        ...store,
+        id: storeId,
+      };
+
+      db.prepare(
+        `
+        UPDATE stores
+        SET
+          area_id = ?,
+          name = ?,
+          address = ?,
+          station_exit = ?,
+          latitude = ?,
+          longitude = ?,
+          business_status = ?,
+          open_hours = ?,
+          tabelog_url = ?,
+          tags_json = ?,
+          description = ?,
+          updated_at = ?,
+          updated_by = ?
+        WHERE id = ?
+      `,
+      ).run(
+        nextStore.areaId,
+        nextStore.name,
+        nextStore.address,
+        nextStore.stationExit,
+        nextStore.latitude,
+        nextStore.longitude,
+        nextStore.businessStatus,
+        nextStore.openHours,
+        nextStore.tabelogUrl || buildTabelogSearchUrl(nextStore),
+        JSON.stringify(nextStore.tags),
+        nextStore.description,
+        timestamp,
+        actor,
+        storeId,
+      );
+
+      return this.getStoreById(storeId);
+    },
+
     insertDrinkPrice(price, actor = systemActor) {
       const audit = auditForInsert(price, actor);
       db.prepare(

@@ -121,6 +121,7 @@ FROM stores;
 - `POST /api/v1/events`
 - `GET /api/v1/admin/events`
 - `POST /api/v1/admin/stores`
+- `PUT /api/v1/admin/stores/{store_id}`
 - `POST /api/v1/admin/drink-prices`
 
 管理APIで登録した店舗・価格もSQLiteに保存されます。

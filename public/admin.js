@@ -8,6 +8,7 @@ const state = {
   areas: [],
   stores: [],
   events: [],
+  selectedStoreId: null,
   token: sessionStorage.getItem("izakayaAdminToken") || "",
   user: sessionStorage.getItem("izakayaAdminUser") || "admin",
 };
@@ -22,6 +23,10 @@ const elements = {
   pendingMetric: document.querySelector("#pendingMetric"),
   eventMetric: document.querySelector("#eventMetric"),
   storeForm: document.querySelector("#storeForm"),
+  storeSubmitButton: document.querySelector("#storeForm .primary-action"),
+  newStoreButton: document.querySelector("#newStoreButton"),
+  cancelEditButton: document.querySelector("#cancelEditButton"),
+  storeDetailPanel: document.querySelector("#storeDetailPanel"),
   priceForm: document.querySelector("#priceForm"),
   storeArea: document.querySelector("#storeArea"),
   priceStore: document.querySelector("#priceStore"),
@@ -119,6 +124,34 @@ function serializeTags(value) {
     .filter(Boolean);
 }
 
+function setStoreField(name, value) {
+  const field = elements.storeForm.elements[name];
+  if (field) {
+    field.value = value ?? "";
+  }
+}
+
+function selectedStore() {
+  return state.stores.find((store) => store.id === state.selectedStoreId) || null;
+}
+
+function storePayloadFromForm() {
+  const formData = new FormData(elements.storeForm);
+  return {
+    areaId: formData.get("areaId"),
+    name: formData.get("name"),
+    address: formData.get("address"),
+    stationExit: formData.get("stationExit"),
+    latitude: Number(formData.get("latitude")),
+    longitude: Number(formData.get("longitude")),
+    businessStatus: formData.get("businessStatus"),
+    openHours: formData.get("openHours"),
+    tabelogUrl: formData.get("tabelogUrl"),
+    tags: serializeTags(formData.get("tags")),
+    description: formData.get("description"),
+  };
+}
+
 function renderAreaOptions() {
   const areaOptions = state.areas
     .map((area) => `<option value="${escapeHtml(area.id)}">${escapeHtml(area.name)}</option>`)
@@ -167,7 +200,7 @@ function storeMatchesFilters(store) {
 function renderStoreTable() {
   const rows = state.stores.filter(storeMatchesFilters);
   if (rows.length === 0) {
-    elements.storeTableBody.innerHTML = `<tr><td colspan="5" class="muted">該当する店舗がありません</td></tr>`;
+    elements.storeTableBody.innerHTML = `<tr><td colspan="6" class="muted">該当する店舗がありません</td></tr>`;
     return;
   }
 
@@ -181,7 +214,9 @@ function renderStoreTable() {
           : "価格未確認";
       const tabelogUrl = safeExternalUrl(store.tabelogUrl);
       return `
-        <tr>
+        <tr class="${store.id === state.selectedStoreId ? "selected-row" : ""}" data-store-id="${escapeHtml(
+          store.id,
+        )}">
           <td>
             <div class="store-name">
               <strong>${escapeHtml(store.name)}</strong>
@@ -197,10 +232,74 @@ function renderStoreTable() {
           <td>
             ${tabelogUrl ? `<a class="link-button" href="${escapeHtml(tabelogUrl)}" target="_blank" rel="noreferrer">食べログ</a>` : ""}
           </td>
+          <td>
+            <button type="button" class="table-action" data-action="edit-store" data-store-id="${escapeHtml(
+              store.id,
+            )}">詳細/編集</button>
+          </td>
         </tr>
       `;
     })
     .join("");
+}
+
+function renderSelectedStoreDetail() {
+  const store = selectedStore();
+  if (!store) {
+    elements.storeDetailPanel.innerHTML = `<p class="muted">店舗一覧から行を選ぶと編集できます。</p>`;
+    elements.storeSubmitButton.textContent = "店舗を登録";
+    return;
+  }
+
+  const priceText =
+    store.prices.length > 0
+      ? store.prices
+          .map((price) => `${drinkLabels[price.category] || price.category} ${price.formattedPrice}`)
+          .join(" / ")
+      : "価格未確認";
+  elements.storeDetailPanel.innerHTML = `
+    <div class="store-detail-summary">
+      <div>
+        <span class="muted">編集中</span>
+        <strong>${escapeHtml(store.name)}</strong>
+      </div>
+      <span class="pill">${escapeHtml(areaName(store.areaId))}</span>
+      <span class="pill">${escapeHtml(priceText)}</span>
+      <span class="muted">${escapeHtml(store.id)}</span>
+    </div>
+  `;
+  elements.storeSubmitButton.textContent = "店舗情報を更新";
+}
+
+function resetStoreEditMode() {
+  state.selectedStoreId = null;
+  elements.storeForm.reset();
+  renderSelectedStoreDetail();
+  renderStoreTable();
+}
+
+function selectStoreForEdit(storeId) {
+  const store = state.stores.find((candidate) => candidate.id === storeId);
+  if (!store) {
+    showNotice("店舗が見つかりません", "error");
+    return;
+  }
+
+  state.selectedStoreId = store.id;
+  setStoreField("areaId", store.areaId);
+  setStoreField("name", store.name);
+  setStoreField("address", store.address);
+  setStoreField("stationExit", store.stationExit);
+  setStoreField("openHours", store.openHours);
+  setStoreField("latitude", store.latitude);
+  setStoreField("longitude", store.longitude);
+  setStoreField("businessStatus", store.businessStatus || "open");
+  setStoreField("tags", store.tags.join(", "));
+  setStoreField("tabelogUrl", store.tabelogUrl);
+  setStoreField("description", store.description);
+  renderSelectedStoreDetail();
+  renderStoreTable();
+  elements.storeForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderEvents() {
@@ -238,8 +337,12 @@ async function loadStores() {
   state.stores = results
     .flatMap((result) => result.stores)
     .sort((a, b) => a.name.localeCompare(b.name, "ja-JP"));
+  if (state.selectedStoreId && !state.stores.some((store) => store.id === state.selectedStoreId)) {
+    state.selectedStoreId = null;
+  }
   renderStoreOptions();
   renderStoreTable();
+  renderSelectedStoreDetail();
   renderMetrics();
 }
 
@@ -278,31 +381,23 @@ async function submitStore(event) {
     return;
   }
 
-  const formData = new FormData(elements.storeForm);
-  const payload = {
-    areaId: formData.get("areaId"),
-    name: formData.get("name"),
-    address: formData.get("address"),
-    stationExit: formData.get("stationExit"),
-    latitude: Number(formData.get("latitude")),
-    longitude: Number(formData.get("longitude")),
-    businessStatus: formData.get("businessStatus"),
-    openHours: formData.get("openHours"),
-    tabelogUrl: formData.get("tabelogUrl"),
-    tags: serializeTags(formData.get("tags")),
-    description: formData.get("description"),
-  };
+  const payload = storePayloadFromForm();
+  const editingStoreId = state.selectedStoreId;
+  const path = editingStoreId
+    ? `/api/v1/admin/stores/${encodeURIComponent(editingStoreId)}`
+    : "/api/v1/admin/stores";
+  const method = editingStoreId ? "PUT" : "POST";
 
   try {
-    await requestJson("/api/v1/admin/stores", {
-      method: "POST",
+    await requestJson(path, {
+      method,
       headers: adminHeaders(),
       body: JSON.stringify(payload),
     });
-    elements.storeForm.reset();
+    resetStoreEditMode();
     await loadStores();
     await loadEvents({ quiet: true });
-    showNotice("店舗を登録しました");
+    showNotice(editingStoreId ? "店舗情報を更新しました" : "店舗を登録しました");
   } catch (error) {
     showNotice(error.message, "error");
   }
@@ -351,6 +446,23 @@ function saveAuth() {
   loadEvents();
 }
 
+function handleStoreTableClick(event) {
+  const button = event.target.closest("button[data-action='edit-store']");
+  if (button) {
+    selectStoreForEdit(button.dataset.storeId);
+    return;
+  }
+
+  if (event.target.closest("a")) {
+    return;
+  }
+
+  const row = event.target.closest("tr[data-store-id]");
+  if (row) {
+    selectStoreForEdit(row.dataset.storeId);
+  }
+}
+
 async function initialize() {
   elements.adminToken.value = state.token;
   elements.adminUser.value = state.user;
@@ -365,10 +477,13 @@ async function initialize() {
 }
 
 elements.saveAuthButton.addEventListener("click", saveAuth);
+elements.newStoreButton.addEventListener("click", resetStoreEditMode);
+elements.cancelEditButton.addEventListener("click", resetStoreEditMode);
 elements.storeForm.addEventListener("submit", submitStore);
 elements.priceForm.addEventListener("submit", submitPrice);
 elements.areaFilter.addEventListener("change", renderStoreTable);
 elements.storeSearch.addEventListener("input", renderStoreTable);
+elements.storeTableBody.addEventListener("click", handleStoreTableClick);
 elements.refreshEventsButton.addEventListener("click", () => loadEvents());
 
 initialize().catch((error) => {

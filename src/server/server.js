@@ -233,6 +233,24 @@ function createEvent(payload, actor = "app") {
   return database.insertEvent(event, actor);
 }
 
+function storePayloadFromAdmin(payload, actor) {
+  return {
+    areaId: payload.areaId,
+    name: payload.name,
+    address: payload.address,
+    stationExit: payload.stationExit || "",
+    latitude: Number(payload.latitude),
+    longitude: Number(payload.longitude),
+    businessStatus: payload.businessStatus || "open",
+    openHours: payload.openHours || "",
+    tabelogUrl: payload.tabelogUrl || "",
+    tags: Array.isArray(payload.tags) ? payload.tags : [],
+    description: payload.description || "",
+    createdBy: payload.createdBy || actor,
+    updatedBy: payload.updatedBy || payload.createdBy || actor,
+  };
+}
+
 async function handleApi(request, response, url) {
   const pathname = url.pathname;
 
@@ -311,22 +329,37 @@ async function handleApi(request, response, url) {
       const payload = await parseRequestBody(request);
       const store = {
         id: `STORE-${Date.now()}`,
-        areaId: payload.areaId,
-        name: payload.name,
-        address: payload.address,
-        stationExit: payload.stationExit || "",
-        latitude: Number(payload.latitude),
-        longitude: Number(payload.longitude),
-        businessStatus: payload.businessStatus || "open",
-        openHours: payload.openHours || "",
-        tabelogUrl: payload.tabelogUrl || "",
-        tags: Array.isArray(payload.tags) ? payload.tags : [],
-        description: payload.description || "",
-        createdBy: payload.createdBy || actor,
-        updatedBy: payload.updatedBy || payload.createdBy || actor,
+        ...storePayloadFromAdmin(payload, actor),
       };
       const createdStore = database.insertStore(store, actor);
       sendJson(response, 201, { store: enrichStore(createdStore) });
+    } catch (error) {
+      sendError(response, 400, "Invalid store payload.", error.message);
+    }
+    return true;
+  }
+
+  const adminStoreMatch = pathname.match(/^\/api\/v1\/admin\/stores\/([^/]+)$/);
+  if ((request.method === "PUT" || request.method === "PATCH") && adminStoreMatch) {
+    if (!requireAdmin(request, response)) {
+      return true;
+    }
+
+    try {
+      const actor = getActor(request, "admin");
+      const payload = await parseRequestBody(request);
+      const updatedStore = database.updateStore(
+        adminStoreMatch[1],
+        storePayloadFromAdmin(payload, actor),
+        actor,
+      );
+
+      if (!updatedStore) {
+        sendError(response, 404, "Store was not found.");
+        return true;
+      }
+
+      sendJson(response, 200, { store: enrichStore(updatedStore) });
     } catch (error) {
       sendError(response, 400, "Invalid store payload.", error.message);
     }

@@ -58,6 +58,10 @@
               <p class="eyebrow">Store</p>
               <h2>店舗登録</h2>
             </div>
+            <button id="newStoreButton" type="button" class="ghost-action">新規登録に戻る</button>
+          </div>
+          <div id="storeDetailPanel" class="store-detail-panel">
+            <p class="muted">店舗一覧から行を選ぶと編集できます。</p>
           </div>
           <form id="storeForm" class="form-grid">
             <label>
@@ -109,6 +113,7 @@
               <textarea name="description" rows="3"></textarea>
             </label>
             <button type="submit" class="primary-action">店舗を登録</button>
+            <button id="cancelEditButton" type="button" class="ghost-action span-2">編集をやめる</button>
           </form>
         </section>
 
@@ -188,6 +193,7 @@
                   <th>価格</th>
                   <th>更新者</th>
                   <th>リンク</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody id="storeTableBody"></tbody>
