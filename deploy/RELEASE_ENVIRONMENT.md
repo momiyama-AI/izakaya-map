@@ -1,66 +1,67 @@
-# Release Environment
+# リリース環境
 
-## Target
+## 対象
 
-MVP release target is Render Web Service with Docker.
+MVPの初回リリース先はRender Web ServiceのDockerデプロイです。
 
-- Service: `izakaya-price-map`
-- Runtime: Docker
-- Health check: `/api/v1/health`
-- Public app: `/`
-- Admin app: `/admin.html`
-- Database: SQLite on a Render persistent disk
-- Database path: `/app/storage/izakaya-map.sqlite`
+- サービス名: `izakaya-price-map`
+- ランタイム: Docker
+- ヘルスチェック: `/api/v1/health`
+- 公開アプリ: `/`
+- 管理画面: `/admin.html`
+- データベース: Render永続ディスク上のSQLite
+- データベースパス: `/app/storage/izakaya-map.sqlite`
 
-## Required Environment Variables
+## 必須環境変数
 
-Set these in Render when creating the Blueprint:
+RenderでBlueprintを作成するときに設定します。
 
-| Key | Required | Notes |
+| キー | 必須 | 内容 |
 |---|---:|---|
-| `GOOGLE_MAPS_API_KEY` | Yes | Google Maps JavaScript API key. Restrict by HTTP referrer after the Render URL is known. |
-| `GOOGLE_MAPS_MAP_ID` | No | Optional Google Maps Map ID. |
-| `ADMIN_TOKEN` | Yes | Render Blueprint can generate this. Copy it to a password manager after creation. |
-| `DATABASE_PATH` | Yes | Set by `render.yaml` to `/app/storage/izakaya-map.sqlite`. |
-| `NODE_ENV` | Yes | `production`. |
-| `PORT` | Yes | `8080`. |
+| `GOOGLE_MAPS_API_KEY` | 必須 | Google Maps JavaScript APIキー。Renderの公開URL確定後、HTTPリファラー制限を設定してください。 |
+| `GOOGLE_MAPS_MAP_ID` | 任意 | Google MapsのMap ID。未設定でも動作します。 |
+| `ADMIN_TOKEN` | 必須 | Render Blueprintで自動生成できます。作成後はパスワード管理ツールなどで保管してください。 |
+| `DATABASE_PATH` | 必須 | `render.yaml` で `/app/storage/izakaya-map.sqlite` を設定済みです。 |
+| `NODE_ENV` | 必須 | `production` を設定済みです。 |
+| `PORT` | 必須 | `8080` を設定済みです。 |
 
-Do not commit real API keys or admin tokens.
+実際のAPIキーや管理トークンはコミットしないでください。
 
-## Render Setup
+## Render初回デプロイ手順
 
-1. Push `main` to GitHub.
-2. In Render, create a new Blueprint from the repository.
-3. Confirm Render detected the root `render.yaml`.
-4. Set `GOOGLE_MAPS_API_KEY` when prompted.
-5. Keep the persistent disk enabled:
-   - name: `izakaya-data`
-   - mount path: `/app/storage`
-   - size: `1GB`
-6. Deploy.
-7. Open `/api/v1/health` and confirm `status` is `ok`.
-8. Open `/` and verify the map loads.
-9. Open `/admin.html`, enter the generated `ADMIN_TOKEN`, and verify the event log loads.
+1. `main` ブランチをGitHubへPushします。
+2. Renderでリポジトリから新しいBlueprintを作成します。
+3. ルート直下の `render.yaml` が検出されていることを確認します。
+4. 入力を求められたら `GOOGLE_MAPS_API_KEY` を設定します。
+5. 永続ディスクが有効になっていることを確認します。
+   - 名前: `izakaya-data`
+   - マウントパス: `/app/storage`
+   - サイズ: `1GB`
+6. デプロイを開始します。
+7. `/api/v1/health` を開き、`status` が `ok` であることを確認します。
+8. `/` を開き、地図が表示されることを確認します。
+9. `/admin.html` を開き、生成された `ADMIN_TOKEN` でイベントログを確認します。
 
-## Release Check
+## リリースチェック
 
-Local:
+ローカル本番相当環境で確認します。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 -BaseUrl http://localhost:8080 -AdminToken dev-admin-token
 ```
 
-Production:
+本番環境で確認します。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 -BaseUrl https://YOUR-SERVICE.onrender.com -AdminToken YOUR_ADMIN_TOKEN
 ```
 
-## Operational Notes
+## 運用メモ
 
-- Render services without a persistent disk have an ephemeral filesystem. SQLite data must be written under `/app/storage`.
-- Render persistent disks are attached to a single service instance. Keep the service at one instance while using SQLite.
-- Persistent disks disable zero-downtime deploys. Expect a short interruption during release.
-- For growth beyond MVP, migrate store and price data from SQLite to managed PostgreSQL.
-- Keep `ADMIN_TOKEN` rotated if it is shared or exposed.
-- Keep Google Maps API key restricted to the production Render domain and localhost for development.
+- Renderで永続ディスクを使わない場合、ファイルシステムは再デプロイ時に消える可能性があります。
+- SQLiteは `/app/storage` 配下に保存します。
+- Renderの永続ディスクは単一サービスインスタンスに接続されるため、SQLite運用中はインスタンス数を1にしてください。
+- 永続ディスク利用時はゼロダウンタイムデプロイにならないため、リリース時に短時間の停止が発生する可能性があります。
+- MVPを超えてデータ量や同時利用が増える場合は、SQLiteからマネージドPostgreSQLへの移行を検討してください。
+- `ADMIN_TOKEN` を共有または露出した場合は、速やかにローテーションしてください。
+- Google Maps APIキーは、本番Renderドメインとローカル開発用URLに制限してください。

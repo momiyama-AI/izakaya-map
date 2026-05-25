@@ -1,22 +1,44 @@
-# Izakaya Drink Price Map
+# 居酒屋ドリンク価格マップ
 
-居酒屋ドリンク価格マップのMVP実装プロジェクトです。
-追加パッケージなしで動くように、初期構成はNode.js標準HTTPサーバーと静的Web画面で構成しています。
+居酒屋のドリンク価格を地図上で比較できるMVPアプリです。
+現在地周辺やエリア検索から店舗を探し、ハイボール・ビールなどの価格をピンと一覧で確認できます。
+
+初期構成は追加パッケージなしで動くように、Node.js標準HTTPサーバー、静的Web画面、SQLiteで構成しています。
+
+## 主な機能
+
+- Google Maps上で店舗とドリンク価格を表示
+- 現在地を取得して近隣店舗を表示
+- エリア、ドリンク種別、価格帯、認証状態で絞り込み
+- 店舗詳細で価格、取得元、食べログURLを表示
+- 右側の検索結果クリックで対象店舗へ地図移動
+- 価格ピンのクリックで地図を拡大
+- 管理画面から店舗登録、店舗編集、価格登録、イベント確認
+- SQLiteへの店舗、価格、イベントログ保存
+
+## 画面URL
+
+ローカル本番相当起動時のURLです。
+
+- アプリ: `http://localhost:8080`
+- 管理画面: `http://localhost:8080/admin.html`
+- ヘルスチェック: `http://localhost:8080/api/v1/health`
 
 ## VS Codeで開発する
 
 VS Codeでこのフォルダ、または `izakaya-price-map.code-workspace` を開いてください。
-ターミナルから起動する場合は以下です。
+
+開発サーバーを起動します。
 
 ```powershell
 .\scripts\dev.ps1
 ```
 
-起動後:
+起動後のURLです。
 
-- App: http://localhost:5173
-- Health: http://localhost:5173/api/v1/health
-- Areas: http://localhost:5173/api/v1/areas
+- アプリ: `http://localhost:5173`
+- ヘルスチェック: `http://localhost:5173/api/v1/health`
+- エリアAPI: `http://localhost:5173/api/v1/areas`
 
 Google Mapsを表示する場合は、起動前にAPIキーを環境変数へ設定してください。
 未設定の場合は、開発用の簡易マップを表示します。
@@ -34,18 +56,18 @@ VS Codeのタスクからも実行できます。
 - `Test: smoke`
 - `Deploy: stop local`
 
-## DB
+## データベース
 
 店舗、エリア、ドリンク価格、イベントログはSQLiteに保存します。
 初回起動時に `.local/izakaya-map.sqlite` が自動作成され、`src/data/seed-data.js` の初期データが投入されます。
 
-明示的に初期化する場合:
+明示的に初期化する場合は以下を実行します。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\init-db.ps1
 ```
 
-DBの保存先を変える場合:
+DBの保存先を変える場合は、`DATABASE_PATH` を指定してください。
 
 ```powershell
 $env:DATABASE_PATH = "C:\path\to\izakaya-map.sqlite"
@@ -62,9 +84,9 @@ DBファイルは `.gitignore` で除外しています。
 - `updated_by`: 更新者
 
 既存の初期データは `system` 作成扱いです。
-管理APIから登録する場合は `x-admin-user` ヘッダーを指定すると作成者/更新者に反映されます。
+管理APIから登録する場合は、`x-admin-user` ヘッダーを指定すると作成者と更新者に反映されます。
 
-確認SQL:
+確認SQLの例です。
 
 ```sql
 SELECT
@@ -78,7 +100,7 @@ SELECT
 FROM stores;
 ```
 
-## ローカルデプロイ確認
+## ローカル本番相当起動
 
 本番相当のポート `8080` でバックグラウンド起動します。
 
@@ -86,36 +108,42 @@ FROM stores;
 .\scripts\deploy-local.ps1
 ```
 
-起動後:
-
-- App: http://localhost:8080
-- Admin: http://localhost:8080/admin.html
-
-停止:
+停止する場合は以下を実行します。
 
 ```powershell
 .\scripts\stop-local.ps1
 ```
 
-## Release Environment
+## リリース環境
 
-Render Docker deployment is configured by `render.yaml`. SQLite data is stored on a Render persistent disk mounted at `/app/storage`.
+初回リリース先はRenderのDocker Web Serviceを想定しています。
+設定はリポジトリ直下の `render.yaml` で管理しています。
 
-Release setup and verification steps are documented in `deploy/RELEASE_ENVIRONMENT.md`.
+- サービス名: `izakaya-price-map`
+- ランタイム: Docker
+- ヘルスチェック: `/api/v1/health`
+- 公開アプリ: `/`
+- 管理画面: `/admin.html`
+- DB: Render永続ディスク上のSQLite
+- DBパス: `/app/storage/izakaya-map.sqlite`
 
-Pre-release check:
+詳細な初回デプロイ手順は `deploy/RELEASE_ENVIRONMENT.md` を参照してください。
+
+リリース前チェックの例です。
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 -BaseUrl http://localhost:8080 -AdminToken dev-admin-token
 ```
 
-## Smoke Test
+## スモークテスト
+
+開発サーバー向けです。
 
 ```powershell
 .\scripts\smoke-test.ps1 -BaseUrl http://localhost:5173
 ```
 
-ローカルデプロイ確認後は以下でも実行できます。
+ローカル本番相当起動後は以下でも実行できます。
 
 ```powershell
 .\scripts\smoke-test.ps1 -BaseUrl http://localhost:8080
@@ -123,7 +151,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 
 
 ## API
 
-代表的なAPI:
+代表的なAPIです。
 
 - `GET /api/v1/health`
 - `GET /api/v1/config`
@@ -136,15 +164,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 
 - `PUT /api/v1/admin/stores/{store_id}`
 - `POST /api/v1/admin/drink-prices`
 
-管理APIで登録した店舗・価格もSQLiteに保存されます。
+管理APIで登録した店舗と価格もSQLiteに保存されます。
 
-開発用の管理トークン:
+開発用の管理トークンです。
 
 ```text
 dev-admin-token
 ```
 
-例:
+価格登録APIの例です。
 
 ```powershell
 Invoke-RestMethod `
@@ -155,15 +183,17 @@ Invoke-RestMethod `
   -Body '{"storeId":"STORE-SJK-001","category":"highball","drinkName":"角ハイボール","priceYen":280,"taxIncluded":true,"acquiredAt":"2026-05-25","sourceType":"store_menu","verificationStatus":"verified"}'
 ```
 
-## OpenStreetMap store import
+## OpenStreetMap店舗取り込み
 
-Use the Overpass API to add location-only store rows for Shinjuku and Nakano. The default target is 100 OSM rows per area. Drink prices are not inserted by this script because they need separate menu verification.
+Overpass APIを使って、新宿と中野の店舗位置データを追加できます。
+標準では各エリア100件ずつ取り込みます。
+メニュー価格は別途確認が必要なため、このスクリプトでは登録しません。
 
 ```powershell
 .\scripts\node.cmd --% scripts/import-osm-stores.js
 ```
 
-Optional:
+件数やOverpass APIの接続先を変える場合は、環境変数を指定してください。
 
 ```powershell
 $env:OSM_IMPORT_TARGET_PER_AREA = "100"
@@ -171,7 +201,8 @@ $env:OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 .\scripts\node.cmd --% scripts/import-osm-stores.js
 ```
 
-Store location data imported by this script is sourced from OpenStreetMap and Overpass API. Keep attribution visible in the app and review ODbL obligations before redistribution.
+このスクリプトで取り込む店舗位置データはOpenStreetMapおよびOverpass APIを出典とします。
+アプリ上の帰属表示を維持し、再配布前にODbLの条件を確認してください。
 
 ## Docker
 
@@ -182,8 +213,13 @@ $env:GOOGLE_MAPS_API_KEY = "YOUR_API_KEY"
 docker compose up --build
 ```
 
-App:
+起動後のURLです。
 
 ```text
 http://localhost:8080
 ```
+
+## 秘密情報の扱い
+
+Google Maps APIキー、管理トークン、Renderのシークレット値はリポジトリにコミットしません。
+ローカルでは環境変数、RenderではEnvironment Variablesに設定してください。
