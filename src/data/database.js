@@ -634,6 +634,10 @@ function createDatabase(options = {}) {
       return db.prepare("SELECT COUNT(*) AS count FROM event_logs").get().count;
     },
 
+    countStores() {
+      return db.prepare("SELECT COUNT(*) AS count FROM stores").get().count;
+    },
+
     listEvents() {
       return db
         .prepare(

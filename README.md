@@ -97,6 +97,18 @@ FROM stores;
 .\scripts\stop-local.ps1
 ```
 
+## Release Environment
+
+Render Docker deployment is configured by `render.yaml`. SQLite data is stored on a Render persistent disk mounted at `/app/storage`.
+
+Release setup and verification steps are documented in `deploy/RELEASE_ENVIRONMENT.md`.
+
+Pre-release check:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 -BaseUrl http://localhost:8080 -AdminToken dev-admin-token
+```
+
 ## Smoke Test
 
 ```powershell

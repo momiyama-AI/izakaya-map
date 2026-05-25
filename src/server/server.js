@@ -261,6 +261,7 @@ async function handleApi(request, response, url) {
       database: {
         provider: "sqlite",
         path: database.databasePath,
+        stores: database.countStores(),
       },
       timestamp: new Date().toISOString(),
     });
