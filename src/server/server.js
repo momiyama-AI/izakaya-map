@@ -17,7 +17,7 @@ const port = Number(process.env.PORT || 5173);
 const adminToken = process.env.ADMIN_TOKEN || "change-me-local-admin-token";
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY || "";
 const googleMapsMapId = process.env.GOOGLE_MAPS_MAP_ID || "";
-const database = createDatabase();
+let database;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -127,9 +127,8 @@ function getActor(request, fallback = "app") {
   return headerValue || fallback;
 }
 
-function enrichStore(store, options = {}) {
-  const prices = database
-    .listDrinkPricesByStoreId(store.id)
+async function enrichStore(store, options = {}) {
+  const prices = (await database.listDrinkPricesByStoreId(store.id))
     .filter(canPublishDrinkPrice)
     .map((price) => ({
       ...price,
@@ -159,7 +158,7 @@ function enrichStore(store, options = {}) {
   };
 }
 
-function listStores(url) {
+async function listStores(url) {
   const areaId = url.searchParams.get("area_id");
   const category = url.searchParams.get("drink_category") || "highball";
   const sort = url.searchParams.get("sort") || "price_asc";
@@ -172,16 +171,15 @@ function listStores(url) {
   const hasOrigin = Number.isFinite(latitude) && Number.isFinite(longitude);
   const origin = hasOrigin ? { latitude, longitude } : null;
 
-  const filteredStores = database
-    .listStores(areaId)
-    .map((store) => enrichStore(store, { category, origin }))
-    .filter((store) => {
-      if (!origin || !Number.isFinite(radiusMeters)) {
-        return true;
-      }
+  const filteredStores = (await Promise.all(
+    (await database.listStores(areaId)).map((store) => enrichStore(store, { category, origin })),
+  )).filter((store) => {
+    if (!origin || !Number.isFinite(radiusMeters)) {
+      return true;
+    }
 
-      return store.distanceMeters <= radiusMeters;
-    });
+    return store.distanceMeters <= radiusMeters;
+  });
 
   const sortedStores = [...filteredStores].sort((a, b) => {
     if (sort === "distance_asc" && origin) {
@@ -218,9 +216,9 @@ function listStores(url) {
   };
 }
 
-function createEvent(payload, actor = "app") {
+async function createEvent(payload, actor = "app") {
   const event = {
-    id: `EVT-${String(database.countEvents() + 1).padStart(5, "0")}`,
+    id: `EVT-${String((await database.countEvents()) + 1).padStart(5, "0")}`,
     type: payload.type || "unknown",
     storeId: payload.storeId || null,
     areaId: payload.areaId || null,
@@ -259,9 +257,9 @@ async function handleApi(request, response, url) {
       status: "ok",
       service: "izakaya-price-map",
       database: {
-        provider: "sqlite",
-        path: database.databasePath,
-        stores: database.countStores(),
+        provider: database.provider,
+        target: database.databasePath || new URL(database.databaseUrl).host,
+        stores: await database.countStores(),
       },
       timestamp: new Date().toISOString(),
     });
@@ -280,31 +278,31 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && pathname === "/api/v1/areas") {
-    sendJson(response, 200, { areas: database.listAreas() });
+    sendJson(response, 200, { areas: await database.listAreas() });
     return true;
   }
 
   if (request.method === "GET" && pathname === "/api/v1/stores") {
-    sendJson(response, 200, listStores(url));
+    sendJson(response, 200, await listStores(url));
     return true;
   }
 
   const storeMatch = pathname.match(/^\/api\/v1\/stores\/([^/]+)$/);
   if (request.method === "GET" && storeMatch) {
-    const store = database.getStoreById(storeMatch[1]);
+    const store = await database.getStoreById(storeMatch[1]);
     if (!store) {
       sendError(response, 404, "Store was not found.");
       return true;
     }
 
-    sendJson(response, 200, { store: enrichStore(store) });
+    sendJson(response, 200, { store: await enrichStore(store) });
     return true;
   }
 
   if (request.method === "POST" && pathname === "/api/v1/events") {
     try {
       const payload = await parseRequestBody(request);
-      sendJson(response, 201, { event: createEvent(payload, getActor(request, "app")) });
+      sendJson(response, 201, { event: await createEvent(payload, getActor(request, "app")) });
     } catch (error) {
       sendError(response, 400, "Invalid event payload.", error.message);
     }
@@ -316,7 +314,7 @@ async function handleApi(request, response, url) {
       return true;
     }
 
-    sendJson(response, 200, { events: database.listEvents() });
+    sendJson(response, 200, { events: await database.listEvents() });
     return true;
   }
 
@@ -332,8 +330,8 @@ async function handleApi(request, response, url) {
         id: `STORE-${Date.now()}`,
         ...storePayloadFromAdmin(payload, actor),
       };
-      const createdStore = database.insertStore(store, actor);
-      sendJson(response, 201, { store: enrichStore(createdStore) });
+      const createdStore = await database.insertStore(store, actor);
+      sendJson(response, 201, { store: await enrichStore(createdStore) });
     } catch (error) {
       sendError(response, 400, "Invalid store payload.", error.message);
     }
@@ -349,7 +347,7 @@ async function handleApi(request, response, url) {
     try {
       const actor = getActor(request, "admin");
       const payload = await parseRequestBody(request);
-      const updatedStore = database.updateStore(
+      const updatedStore = await database.updateStore(
         adminStoreMatch[1],
         storePayloadFromAdmin(payload, actor),
         actor,
@@ -360,7 +358,7 @@ async function handleApi(request, response, url) {
         return true;
       }
 
-      sendJson(response, 200, { store: enrichStore(updatedStore) });
+      sendJson(response, 200, { store: await enrichStore(updatedStore) });
     } catch (error) {
       sendError(response, 400, "Invalid store payload.", error.message);
     }
@@ -394,7 +392,7 @@ async function handleApi(request, response, url) {
         return true;
       }
 
-      sendJson(response, 201, { price: database.insertDrinkPrice(price, actor) });
+      sendJson(response, 201, { price: await database.insertDrinkPrice(price, actor) });
     } catch (error) {
       sendError(response, 400, "Invalid drink price payload.", error.message);
     }
@@ -426,6 +424,14 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`Izakaya price map is running on http://localhost:${port}`);
+async function main() {
+  database = await createDatabase();
+  server.listen(port, () => {
+    console.log(`Izakaya price map is running on http://localhost:${port}`);
+  });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

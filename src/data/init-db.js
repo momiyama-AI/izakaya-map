@@ -1,17 +1,24 @@
 const { createDatabase } = require("./database");
 
-const database = createDatabase();
+async function main() {
+  const database = await createDatabase();
 
-console.log(`SQLite database ready: ${database.databasePath}`);
-console.log(
-  JSON.stringify(
-    {
-      areas: database.listAreas().length,
-      stores: database.listStores().length,
-      events: database.countEvents(),
-    },
-    null,
-    2,
-  ),
-);
+  console.log(`Database ready: ${database.databasePath || database.databaseUrl}`);
+  console.log(
+    JSON.stringify(
+      {
+        provider: database.provider,
+        areas: (await database.listAreas()).length,
+        stores: (await database.listStores()).length,
+        events: await database.countEvents(),
+      },
+      null,
+      2,
+    ),
+  );
+}
 
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

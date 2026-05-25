@@ -10,6 +10,6 @@
     "smoke": "node src/server/smoke-test.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   }
 }

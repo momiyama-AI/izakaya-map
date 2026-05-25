@@ -3,7 +3,7 @@
 居酒屋のドリンク価格を地図上で比較できるMVPアプリです。
 現在地周辺やエリア検索から店舗を探し、ハイボール・ビールなどの価格をピンと一覧で確認できます。
 
-初期構成は追加パッケージなしで動くように、Node.js標準HTTPサーバー、静的Web画面、SQLiteで構成しています。
+初期構成は追加パッケージなしで動くように、Node.js標準HTTPサーバー、静的Web画面、SQLite/Tursoで構成しています。
 
 ## 主な機能
 
@@ -27,6 +27,7 @@
 ## VS Codeで開発する
 
 VS Codeでこのフォルダ、または `izakaya-price-map.code-workspace` を開いてください。
+Node.jsは24以上を利用します。
 
 開発サーバーを起動します。
 
@@ -58,7 +59,11 @@ VS Codeのタスクからも実行できます。
 
 ## データベース
 
-店舗、エリア、ドリンク価格、イベントログはSQLiteに保存します。
+店舗、エリア、ドリンク価格、イベントログはDBに保存します。
+ローカル開発ではSQLiteファイル、本番RenderではTurso無料DBを使います。
+
+### ローカルSQLite
+
 初回起動時に `.local/izakaya-map.sqlite` が自動作成され、`src/data/seed-data.js` の初期データが投入されます。
 
 明示的に初期化する場合は以下を実行します。
@@ -75,6 +80,18 @@ $env:DATABASE_PATH = "C:\path\to\izakaya-map.sqlite"
 ```
 
 DBファイルは `.gitignore` で除外しています。
+
+### Turso
+
+`TURSO_DATABASE_URL` と `TURSO_AUTH_TOKEN` を設定すると、SQLiteファイルではなくTursoへ接続します。
+
+```powershell
+$env:TURSO_DATABASE_URL = "libsql://YOUR_DATABASE.turso.io"
+$env:TURSO_AUTH_TOKEN = "YOUR_DATABASE_TOKEN"
+.\scripts\dev.ps1
+```
+
+本番環境でTurso接続を必須にする場合は `REQUIRE_TURSO=true` を設定してください。
 
 主要テーブルには監査用の列があります。
 
@@ -116,16 +133,17 @@ FROM stores;
 
 ## リリース環境
 
-初回リリース先はRenderのDocker Web Serviceを想定しています。
+初回リリース先はRender Free Web ServiceとTurso無料DBを想定しています。
 設定はリポジトリ直下の `render.yaml` で管理しています。
 
 - サービス名: `izakaya-price-map`
 - ランタイム: Docker
+- Renderプラン: Free
 - ヘルスチェック: `/api/v1/health`
 - 公開アプリ: `/`
 - 管理画面: `/admin.html`
-- DB: Render永続ディスク上のSQLite
-- DBパス: `/app/storage/izakaya-map.sqlite`
+- DB: Turso
+- 必須環境変数: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 
 詳細な初回デプロイ手順は `deploy/RELEASE_ENVIRONMENT.md` を参照してください。
 
@@ -164,7 +182,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release-check.ps1 
 - `PUT /api/v1/admin/stores/{store_id}`
 - `POST /api/v1/admin/drink-prices`
 
-管理APIで登録した店舗と価格もSQLiteに保存されます。
+管理APIで登録した店舗と価格もDBに保存されます。
+ローカル環境ではSQLite、本番環境ではTursoに保存されます。
 
 開発用の管理トークンです。
 
@@ -221,5 +240,5 @@ http://localhost:8080
 
 ## 秘密情報の扱い
 
-Google Maps APIキー、管理トークン、Renderのシークレット値はリポジトリにコミットしません。
+Google Maps APIキー、管理トークン、Tursoトークン、Renderのシークレット値はリポジトリにコミットしません。
 ローカルでは環境変数、RenderではEnvironment Variablesに設定してください。

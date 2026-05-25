@@ -281,7 +281,7 @@ async function fetchOsmElements(area) {
 }
 
 async function importArea(database, area) {
-  const allStores = database.listStores(area.areaId);
+  const allStores = await database.listStores(area.areaId);
   const existingIds = new Set(allStores.map((store) => store.id));
   const existingSourceRows = allStores.filter((store) =>
     store.id.startsWith(`STORE-OSM-${area.idPart}-`),
@@ -316,7 +316,7 @@ async function importArea(database, area) {
       continue;
     }
 
-    database.insertStore(store, actor);
+    await database.insertStore(store, actor);
     existingIds.add(store.id);
     existingNames.add(store.name);
     inserted += 1;
@@ -337,7 +337,7 @@ async function main() {
     throw new Error("OSM_IMPORT_TARGET_PER_AREA must be a positive integer.");
   }
 
-  const database = createDatabase();
+  const database = await createDatabase();
   const results = [];
   for (const area of areaConfigs) {
     results.push(await importArea(database, area));

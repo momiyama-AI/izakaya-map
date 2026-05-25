@@ -110,22 +110,213 @@ function toEvent(row) {
   };
 }
 
-function getTableColumns(db, tableName) {
-  return db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+function splitSqlStatements(sql) {
+  return sql
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter(Boolean);
 }
 
-function addMissingColumns(db, tableName, columns) {
-  const existingColumns = getTableColumns(db, tableName);
+function toTursoArg(value) {
+  if (value === null || value === undefined) {
+    return { type: "null" };
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return { type: "blob", base64: value.toString("base64") };
+  }
+
+  if (typeof value === "boolean") {
+    return { type: "integer", value: value ? "1" : "0" };
+  }
+
+  if (Number.isInteger(value)) {
+    return { type: "integer", value: String(value) };
+  }
+
+  if (typeof value === "number") {
+    return { type: "float", value: String(value) };
+  }
+
+  return { type: "text", value: String(value) };
+}
+
+function fromTursoValue(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== "object" || !("type" in value)) {
+    return value;
+  }
+
+  if (value.type === "null") {
+    return null;
+  }
+
+  if (value.type === "integer") {
+    return Number(value.value || 0);
+  }
+
+  if (value.type === "float") {
+    return Number(value.value || 0);
+  }
+
+  if (value.type === "blob") {
+    return Buffer.from(value.base64 || "", "base64");
+  }
+
+  return value.value ?? "";
+}
+
+function rowsFromTursoResult(result) {
+  const columns = (result.cols || []).map((column, index) => {
+    if (typeof column === "string") {
+      return column;
+    }
+
+    if (Array.isArray(column)) {
+      return column[0] || `column_${index}`;
+    }
+
+    return column.name || column.column || `column_${index}`;
+  });
+
+  return (result.rows || []).map((row) => {
+    const values = Array.isArray(row) ? row : row.values || [];
+    return columns.reduce((record, column, index) => {
+      record[column] = fromTursoValue(values[index]);
+      return record;
+    }, {});
+  });
+}
+
+function normalizeTursoDatabaseUrl(databaseUrl) {
+  const trimmedUrl = String(databaseUrl || "").trim();
+  if (!trimmedUrl) {
+    return "";
+  }
+
+  const httpsUrl = trimmedUrl.replace(/^libsql:\/\//, "https://");
+  return httpsUrl.replace(/\/v2\/pipeline\/?$/, "").replace(/\/$/, "");
+}
+
+function createLocalExecutor(databasePath) {
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+
+  const db = new DatabaseSync(databasePath);
+  db.exec("PRAGMA foreign_keys = ON");
+
+  return {
+    provider: "sqlite",
+    databasePath,
+    databaseUrl: null,
+
+    async exec(sql) {
+      db.exec(sql);
+    },
+
+    async all(sql, args = []) {
+      return db.prepare(sql).all(...args);
+    },
+
+    async get(sql, args = []) {
+      return db.prepare(sql).get(...args);
+    },
+
+    async run(sql, args = []) {
+      return db.prepare(sql).run(...args);
+    },
+  };
+}
+
+function createTursoExecutor(databaseUrl, authToken) {
+  const baseUrl = normalizeTursoDatabaseUrl(databaseUrl);
+  if (!baseUrl || !authToken) {
+    throw new Error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are required for Turso.");
+  }
+
+  async function execute(sql, args = []) {
+    const response = await fetch(`${baseUrl}/v2/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        requests: [
+          {
+            type: "execute",
+            stmt: {
+              sql,
+              ...(args.length > 0 ? { args: args.map(toTursoArg) } : {}),
+            },
+          },
+          { type: "close" },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Turso request failed: ${response.status} ${body}`);
+    }
+
+    const payload = await response.json();
+    const failedResult = (payload.results || []).find((result) => result.type !== "ok");
+    if (failedResult) {
+      throw new Error(`Turso SQL failed: ${JSON.stringify(failedResult)}`);
+    }
+
+    const executeResult = (payload.results || []).find(
+      (result) => result.response?.type === "execute" || result.response?.result,
+    );
+
+    return executeResult?.response?.result || { cols: [], rows: [], affected_row_count: 0 };
+  }
+
+  return {
+    provider: "turso",
+    databasePath: null,
+    databaseUrl: baseUrl,
+
+    async exec(sql) {
+      for (const statement of splitSqlStatements(sql)) {
+        await execute(statement);
+      }
+    },
+
+    async all(sql, args = []) {
+      return rowsFromTursoResult(await execute(sql, args));
+    },
+
+    async get(sql, args = []) {
+      const rows = await this.all(sql, args);
+      return rows[0];
+    },
+
+    async run(sql, args = []) {
+      return execute(sql, args);
+    },
+  };
+}
+
+async function getTableColumns(db, tableName) {
+  return (await db.all(`PRAGMA table_info(${tableName})`)).map((column) => column.name);
+}
+
+async function addMissingColumns(db, tableName, columns) {
+  const existingColumns = await getTableColumns(db, tableName);
   for (const column of columns) {
     if (!existingColumns.includes(column.name)) {
-      db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.definition}`);
+      await db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.definition}`);
     }
   }
 }
 
-function backfillAuditColumns(db, tableName) {
+async function backfillAuditColumns(db, tableName) {
   const timestamp = nowIso();
-  db.prepare(
+  await db.run(
     `
     UPDATE ${tableName}
     SET
@@ -134,41 +325,41 @@ function backfillAuditColumns(db, tableName) {
       created_by = CASE WHEN created_by = '' THEN ? ELSE created_by END,
       updated_by = CASE WHEN updated_by = '' THEN ? ELSE updated_by END
   `,
-  ).run(timestamp, timestamp, systemActor, systemActor);
+    [timestamp, timestamp, systemActor, systemActor],
+  );
 }
 
-function backfillStoreExternalUrls(db) {
-  const rows = db
-    .prepare(
-      `
-      SELECT id, name, address, tabelog_url
-      FROM stores
-      WHERE tabelog_url = ''
-    `,
-    )
-    .all();
+async function backfillStoreExternalUrls(db) {
+  const rows = await db.all(
+    `
+    SELECT id, name, address, tabelog_url
+    FROM stores
+    WHERE tabelog_url = ''
+  `,
+  );
 
   if (rows.length === 0) {
     return;
   }
 
   const timestamp = nowIso();
-  const updateStore = db.prepare(`
-    UPDATE stores
-    SET
-      tabelog_url = ?,
-      updated_at = ?,
-      updated_by = ?
-    WHERE id = ?
-  `);
-
   for (const row of rows) {
-    updateStore.run(buildTabelogSearchUrl(row), timestamp, systemActor, row.id);
+    await db.run(
+      `
+      UPDATE stores
+      SET
+        tabelog_url = ?,
+        updated_at = ?,
+        updated_by = ?
+      WHERE id = ?
+    `,
+      [buildTabelogSearchUrl(row), timestamp, systemActor, row.id],
+    );
   }
 }
 
-function ensureSchema(db) {
-  db.exec(`
+async function ensureSchema(db) {
+  await db.exec(`
     PRAGMA foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS areas (
@@ -240,221 +431,69 @@ function ensureSchema(db) {
     );
   `);
 
-  const areaColumns = getTableColumns(db, "areas");
+  const areaColumns = await getTableColumns(db, "areas");
   if (!areaColumns.includes("sort_order")) {
-    db.exec("ALTER TABLE areas ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+    await db.exec("ALTER TABLE areas ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
   }
 
   for (const tableName of ["areas", "stores", "drink_prices", "event_logs"]) {
-    addMissingColumns(db, tableName, auditColumns);
-    backfillAuditColumns(db, tableName);
+    await addMissingColumns(db, tableName, auditColumns);
+    await backfillAuditColumns(db, tableName);
   }
 
-  addMissingColumns(db, "stores", storeColumns);
-  backfillStoreExternalUrls(db);
+  await addMissingColumns(db, "stores", storeColumns);
+  await backfillStoreExternalUrls(db);
 }
 
-function seedInitialData(db) {
-  const areaCount = db.prepare("SELECT COUNT(*) AS count FROM areas").get().count;
-  const storeCount = db.prepare("SELECT COUNT(*) AS count FROM stores").get().count;
-  const priceCount = db.prepare("SELECT COUNT(*) AS count FROM drink_prices").get().count;
+async function seedInitialData(db) {
+  const areaCount = (await db.get("SELECT COUNT(*) AS count FROM areas")).count;
+  const storeCount = (await db.get("SELECT COUNT(*) AS count FROM stores")).count;
+  const priceCount = (await db.get("SELECT COUNT(*) AS count FROM drink_prices")).count;
 
   if (areaCount === 0) {
     const audit = auditForInsert({}, systemActor);
-    const insertArea = db.prepare(`
-      INSERT INTO areas (
-        id,
-        name,
-        station,
-        center_latitude,
-        center_longitude,
-        description,
-        created_at,
-        updated_at,
-        created_by,
-        updated_by
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
     for (const area of areas) {
-      insertArea.run(
-        area.id,
-        area.name,
-        area.station,
-        area.center.latitude,
-        area.center.longitude,
-        area.description,
-        audit.createdAt,
-        audit.updatedAt,
-        audit.createdBy,
-        audit.updatedBy,
+      await db.run(
+        `
+        INSERT INTO areas (
+          id,
+          name,
+          station,
+          center_latitude,
+          center_longitude,
+          description,
+          created_at,
+          updated_at,
+          created_by,
+          updated_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        [
+          area.id,
+          area.name,
+          area.station,
+          area.center.latitude,
+          area.center.longitude,
+          area.description,
+          audit.createdAt,
+          audit.updatedAt,
+          audit.createdBy,
+          audit.updatedBy,
+        ],
       );
     }
   }
 
-  const updateAreaOrder = db.prepare("UPDATE areas SET sort_order = ? WHERE id = ?");
-  areas.forEach((area, index) => updateAreaOrder.run(index + 1, area.id));
+  for (const [index, area] of areas.entries()) {
+    await db.run("UPDATE areas SET sort_order = ? WHERE id = ?", [index + 1, area.id]);
+  }
 
   if (storeCount === 0) {
     const audit = auditForInsert({}, systemActor);
-    const insertStore = db.prepare(`
-      INSERT INTO stores (
-        id,
-        area_id,
-        name,
-        address,
-        station_exit,
-        latitude,
-        longitude,
-        business_status,
-        open_hours,
-        tabelog_url,
-        tags_json,
-        description,
-        created_at,
-        updated_at,
-        created_by,
-        updated_by
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
     for (const store of stores) {
       const tabelogUrl = store.tabelogUrl || buildTabelogSearchUrl(store);
-      insertStore.run(
-        store.id,
-        store.areaId,
-        store.name,
-        store.address,
-        store.stationExit,
-        store.latitude,
-        store.longitude,
-        store.businessStatus,
-        store.openHours,
-        tabelogUrl,
-        JSON.stringify(store.tags),
-        store.description,
-        audit.createdAt,
-        audit.updatedAt,
-        audit.createdBy,
-        audit.updatedBy,
-      );
-    }
-  }
-
-  if (priceCount === 0) {
-    const audit = auditForInsert({}, systemActor);
-    const insertPrice = db.prepare(`
-      INSERT INTO drink_prices (
-        id,
-        store_id,
-        category,
-        drink_name,
-        price_yen,
-        tax_included,
-        acquired_at,
-        source_type,
-        verification_status,
-        created_at,
-        updated_at,
-        created_by,
-        updated_by
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const price of drinkPrices) {
-      insertPrice.run(
-        price.id,
-        price.storeId,
-        price.category,
-        price.drinkName,
-        price.priceYen,
-        price.taxIncluded ? 1 : 0,
-        price.acquiredAt,
-        price.sourceType,
-        price.verificationStatus,
-        audit.createdAt,
-        audit.updatedAt,
-        audit.createdBy,
-        audit.updatedBy,
-      );
-    }
-  }
-}
-
-function createDatabase(options = {}) {
-  const databasePath = options.databasePath || process.env.DATABASE_PATH || defaultDatabasePath;
-  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
-
-  const db = new DatabaseSync(databasePath);
-  ensureSchema(db);
-  seedInitialData(db);
-
-  return {
-    databasePath,
-
-    listAreas() {
-      return db
-        .prepare(
-          `
-          SELECT *
-          FROM areas
-          ORDER BY sort_order, name
-        `,
-        )
-        .all()
-        .map(toArea);
-    },
-
-    listStores(areaId = null) {
-      const rows = areaId
-        ? db
-            .prepare(
-              `
-              SELECT *
-              FROM stores
-              WHERE area_id = ?
-              ORDER BY name
-            `,
-            )
-            .all(areaId)
-        : db
-            .prepare(
-              `
-              SELECT *
-              FROM stores
-              ORDER BY name
-            `,
-            )
-            .all();
-
-      return rows.map(toStore);
-    },
-
-    getStoreById(storeId) {
-      const row = db.prepare("SELECT * FROM stores WHERE id = ?").get(storeId);
-      return row ? toStore(row) : null;
-    },
-
-    listDrinkPricesByStoreId(storeId) {
-      return db
-        .prepare(
-          `
-          SELECT *
-          FROM drink_prices
-          WHERE store_id = ?
-          ORDER BY category, price_yen
-        `,
-        )
-        .all(storeId)
-        .map(toDrinkPrice);
-    },
-
-    insertStore(store, actor = systemActor) {
-      const audit = auditForInsert(store, actor);
-      db.prepare(
+      await db.run(
         `
         INSERT INTO stores (
           id,
@@ -476,83 +515,32 @@ function createDatabase(options = {}) {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      ).run(
-        store.id,
-        store.areaId,
-        store.name,
-        store.address,
-        store.stationExit,
-        store.latitude,
-        store.longitude,
-        store.businessStatus,
-        store.openHours,
-        store.tabelogUrl || buildTabelogSearchUrl(store),
-        JSON.stringify(store.tags),
-        store.description,
-        audit.createdAt,
-        audit.updatedAt,
-        audit.createdBy,
-        audit.updatedBy,
+        [
+          store.id,
+          store.areaId,
+          store.name,
+          store.address,
+          store.stationExit,
+          store.latitude,
+          store.longitude,
+          store.businessStatus,
+          store.openHours,
+          tabelogUrl,
+          JSON.stringify(store.tags),
+          store.description,
+          audit.createdAt,
+          audit.updatedAt,
+          audit.createdBy,
+          audit.updatedBy,
+        ],
       );
+    }
+  }
 
-      return this.getStoreById(store.id);
-    },
-
-    updateStore(storeId, store, actor = systemActor) {
-      const existingStore = this.getStoreById(storeId);
-      if (!existingStore) {
-        return null;
-      }
-
-      const timestamp = nowIso();
-      const nextStore = {
-        ...existingStore,
-        ...store,
-        id: storeId,
-      };
-
-      db.prepare(
-        `
-        UPDATE stores
-        SET
-          area_id = ?,
-          name = ?,
-          address = ?,
-          station_exit = ?,
-          latitude = ?,
-          longitude = ?,
-          business_status = ?,
-          open_hours = ?,
-          tabelog_url = ?,
-          tags_json = ?,
-          description = ?,
-          updated_at = ?,
-          updated_by = ?
-        WHERE id = ?
-      `,
-      ).run(
-        nextStore.areaId,
-        nextStore.name,
-        nextStore.address,
-        nextStore.stationExit,
-        nextStore.latitude,
-        nextStore.longitude,
-        nextStore.businessStatus,
-        nextStore.openHours,
-        nextStore.tabelogUrl || buildTabelogSearchUrl(nextStore),
-        JSON.stringify(nextStore.tags),
-        nextStore.description,
-        timestamp,
-        actor,
-        storeId,
-      );
-
-      return this.getStoreById(storeId);
-    },
-
-    insertDrinkPrice(price, actor = systemActor) {
-      const audit = auditForInsert(price, actor);
-      db.prepare(
+  if (priceCount === 0) {
+    const audit = auditForInsert({}, systemActor);
+    for (const price of drinkPrices) {
+      await db.run(
         `
         INSERT INTO drink_prices (
           id,
@@ -571,20 +559,233 @@ function createDatabase(options = {}) {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      ).run(
-        price.id,
-        price.storeId,
-        price.category,
-        price.drinkName,
-        price.priceYen,
-        price.taxIncluded ? 1 : 0,
-        price.acquiredAt,
-        price.sourceType,
-        price.verificationStatus,
-        audit.createdAt,
-        audit.updatedAt,
-        audit.createdBy,
-        audit.updatedBy,
+        [
+          price.id,
+          price.storeId,
+          price.category,
+          price.drinkName,
+          price.priceYen,
+          price.taxIncluded ? 1 : 0,
+          price.acquiredAt,
+          price.sourceType,
+          price.verificationStatus,
+          audit.createdAt,
+          audit.updatedAt,
+          audit.createdBy,
+          audit.updatedBy,
+        ],
+      );
+    }
+  }
+}
+
+async function createDatabase(options = {}) {
+  const tursoDatabaseUrl = options.tursoDatabaseUrl || process.env.TURSO_DATABASE_URL || "";
+  const tursoAuthToken = options.tursoAuthToken || process.env.TURSO_AUTH_TOKEN || "";
+  const shouldUseTurso = Boolean(tursoDatabaseUrl || tursoAuthToken);
+  const shouldRequireTurso =
+    options.requireTurso === true || String(process.env.REQUIRE_TURSO || "").toLowerCase() === "true";
+  if (shouldRequireTurso && !shouldUseTurso) {
+    throw new Error("Turso is required. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.");
+  }
+
+  const executor = shouldUseTurso
+    ? createTursoExecutor(tursoDatabaseUrl, tursoAuthToken)
+    : createLocalExecutor(options.databasePath || process.env.DATABASE_PATH || defaultDatabasePath);
+
+  await ensureSchema(executor);
+  await seedInitialData(executor);
+
+  return {
+    provider: executor.provider,
+    databasePath: executor.databasePath,
+    databaseUrl: executor.databaseUrl,
+
+    async listAreas() {
+      return (
+        await executor.all(`
+          SELECT *
+          FROM areas
+          ORDER BY sort_order, name
+        `)
+      ).map(toArea);
+    },
+
+    async listStores(areaId = null) {
+      const rows = areaId
+        ? await executor.all(
+            `
+            SELECT *
+            FROM stores
+            WHERE area_id = ?
+            ORDER BY name
+          `,
+            [areaId],
+          )
+        : await executor.all(`
+            SELECT *
+            FROM stores
+            ORDER BY name
+          `);
+
+      return rows.map(toStore);
+    },
+
+    async getStoreById(storeId) {
+      const row = await executor.get("SELECT * FROM stores WHERE id = ?", [storeId]);
+      return row ? toStore(row) : null;
+    },
+
+    async listDrinkPricesByStoreId(storeId) {
+      return (
+        await executor.all(
+          `
+          SELECT *
+          FROM drink_prices
+          WHERE store_id = ?
+          ORDER BY category, price_yen
+        `,
+          [storeId],
+        )
+      ).map(toDrinkPrice);
+    },
+
+    async insertStore(store, actor = systemActor) {
+      const audit = auditForInsert(store, actor);
+      await executor.run(
+        `
+        INSERT INTO stores (
+          id,
+          area_id,
+          name,
+          address,
+          station_exit,
+          latitude,
+          longitude,
+          business_status,
+          open_hours,
+          tabelog_url,
+          tags_json,
+          description,
+          created_at,
+          updated_at,
+          created_by,
+          updated_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        [
+          store.id,
+          store.areaId,
+          store.name,
+          store.address,
+          store.stationExit,
+          store.latitude,
+          store.longitude,
+          store.businessStatus,
+          store.openHours,
+          store.tabelogUrl || buildTabelogSearchUrl(store),
+          JSON.stringify(store.tags),
+          store.description,
+          audit.createdAt,
+          audit.updatedAt,
+          audit.createdBy,
+          audit.updatedBy,
+        ],
+      );
+
+      return this.getStoreById(store.id);
+    },
+
+    async updateStore(storeId, store, actor = systemActor) {
+      const existingStore = await this.getStoreById(storeId);
+      if (!existingStore) {
+        return null;
+      }
+
+      const timestamp = nowIso();
+      const nextStore = {
+        ...existingStore,
+        ...store,
+        id: storeId,
+      };
+
+      await executor.run(
+        `
+        UPDATE stores
+        SET
+          area_id = ?,
+          name = ?,
+          address = ?,
+          station_exit = ?,
+          latitude = ?,
+          longitude = ?,
+          business_status = ?,
+          open_hours = ?,
+          tabelog_url = ?,
+          tags_json = ?,
+          description = ?,
+          updated_at = ?,
+          updated_by = ?
+        WHERE id = ?
+      `,
+        [
+          nextStore.areaId,
+          nextStore.name,
+          nextStore.address,
+          nextStore.stationExit,
+          nextStore.latitude,
+          nextStore.longitude,
+          nextStore.businessStatus,
+          nextStore.openHours,
+          nextStore.tabelogUrl || buildTabelogSearchUrl(nextStore),
+          JSON.stringify(nextStore.tags),
+          nextStore.description,
+          timestamp,
+          actor,
+          storeId,
+        ],
+      );
+
+      return this.getStoreById(storeId);
+    },
+
+    async insertDrinkPrice(price, actor = systemActor) {
+      const audit = auditForInsert(price, actor);
+      await executor.run(
+        `
+        INSERT INTO drink_prices (
+          id,
+          store_id,
+          category,
+          drink_name,
+          price_yen,
+          tax_included,
+          acquired_at,
+          source_type,
+          verification_status,
+          created_at,
+          updated_at,
+          created_by,
+          updated_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        [
+          price.id,
+          price.storeId,
+          price.category,
+          price.drinkName,
+          price.priceYen,
+          price.taxIncluded ? 1 : 0,
+          price.acquiredAt,
+          price.sourceType,
+          price.verificationStatus,
+          audit.createdAt,
+          audit.updatedAt,
+          audit.createdBy,
+          audit.updatedBy,
+        ],
       );
 
       return {
@@ -593,9 +794,9 @@ function createDatabase(options = {}) {
       };
     },
 
-    insertEvent(event, actor = systemActor) {
+    async insertEvent(event, actor = systemActor) {
       const audit = auditForInsert(event, actor);
-      db.prepare(
+      await executor.run(
         `
         INSERT INTO event_logs (
           id,
@@ -611,17 +812,18 @@ function createDatabase(options = {}) {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      ).run(
-        event.id,
-        event.type,
-        event.storeId,
-        event.areaId,
-        event.drinkCategory,
-        JSON.stringify(event.metadata),
-        audit.createdAt,
-        audit.updatedAt,
-        audit.createdBy,
-        audit.updatedBy,
+        [
+          event.id,
+          event.type,
+          event.storeId,
+          event.areaId,
+          event.drinkCategory,
+          JSON.stringify(event.metadata),
+          audit.createdAt,
+          audit.updatedAt,
+          audit.createdBy,
+          audit.updatedBy,
+        ],
       );
 
       return {
@@ -630,26 +832,23 @@ function createDatabase(options = {}) {
       };
     },
 
-    countEvents() {
-      return db.prepare("SELECT COUNT(*) AS count FROM event_logs").get().count;
+    async countEvents() {
+      return (await executor.get("SELECT COUNT(*) AS count FROM event_logs")).count;
     },
 
-    countStores() {
-      return db.prepare("SELECT COUNT(*) AS count FROM stores").get().count;
+    async countStores() {
+      return (await executor.get("SELECT COUNT(*) AS count FROM stores")).count;
     },
 
-    listEvents() {
-      return db
-        .prepare(
-          `
+    async listEvents() {
+      return (
+        await executor.all(`
           SELECT *
           FROM event_logs
           ORDER BY created_at DESC
           LIMIT 500
-        `,
-        )
-        .all()
-        .map(toEvent);
+        `)
+      ).map(toEvent);
     },
   };
 }
