@@ -33,6 +33,8 @@ const drinkMarkerStyles = {
 
 const unknownPriceLabel = "\u4fa1\u683c\u672a\u78ba\u8a8d";
 const unknownFreshnessLabel = "\u672a\u78ba\u8a8d";
+const resultFocusZoomLevel = 16;
+const mapPinFocusZoomLevel = 17;
 
 const state = {
   areas: [],
@@ -386,7 +388,9 @@ function renderFallbackMapPins() {
       <strong>${storePriceLabel(store)}</strong>
       <span>${store.name}</span>
     `;
-    pin.addEventListener("click", () => selectStore(store.id));
+    pin.addEventListener("click", () =>
+      selectStore(store.id, { focusMap: true, zoomLevel: mapPinFocusZoomLevel }),
+    );
     elements.mapCanvas.append(pin);
   });
 }
@@ -455,7 +459,9 @@ async function renderGoogleMapPins() {
       icon: createGoogleMarkerIcon(maps, store, active),
       zIndex: active ? 1000 : 100,
     });
-    marker.addListener("click", () => selectStore(store.id));
+    marker.addListener("click", () =>
+      selectStore(store.id, { focusMap: true, zoomLevel: mapPinFocusZoomLevel }),
+    );
     state.googleMarkers.set(store.id, marker);
     bounds.extend(marker.getPosition());
   }
@@ -596,7 +602,7 @@ function refreshActiveStates() {
   }
 }
 
-function focusStoreOnMap(storeId) {
+function focusStoreOnMap(storeId, options = {}) {
   const store = state.stores.find((candidate) => candidate.id === storeId);
   if (!store || !state.googleMap) {
     return;
@@ -604,8 +610,9 @@ function focusStoreOnMap(storeId) {
 
   state.googleMap.panTo({ lat: store.latitude, lng: store.longitude });
   const currentZoom = state.googleMap.getZoom?.() || 15;
-  if (currentZoom < 16) {
-    state.googleMap.setZoom(16);
+  const zoomLevel = options.zoomLevel || resultFocusZoomLevel;
+  if (currentZoom < zoomLevel) {
+    state.googleMap.setZoom(zoomLevel);
   }
 }
 
@@ -613,7 +620,7 @@ function selectStore(storeId, options = {}) {
   state.selectedStoreId = storeId;
   refreshActiveStates();
   if (options.focusMap) {
-    focusStoreOnMap(storeId);
+    focusStoreOnMap(storeId, options);
   }
   renderDetail();
   track("store_selected", { storeId });
