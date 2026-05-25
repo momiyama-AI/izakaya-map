@@ -135,7 +135,7 @@ function toTursoArg(value) {
   }
 
   if (typeof value === "number") {
-    return { type: "float", value: String(value) };
+    return { type: "float", value };
   }
 
   return { type: "text", value: String(value) };
