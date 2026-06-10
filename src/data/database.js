@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
+const { importNakanoSourceBackedPrices } = require("./nakano-source-import");
 const { areas, stores, drinkPrices } = require("./seed-data");
 
 const rootDir = path.resolve(__dirname, "../..");
@@ -596,7 +597,7 @@ async function createDatabase(options = {}) {
   await ensureSchema(executor);
   await seedInitialData(executor);
 
-  return {
+  const database = {
     provider: executor.provider,
     databasePath: executor.databasePath,
     databaseUrl: executor.databaseUrl,
@@ -851,6 +852,16 @@ async function createDatabase(options = {}) {
       ).map(toEvent);
     },
   };
+
+  const shouldSeedCuratedImports =
+    options.seedCuratedImports !== false &&
+    String(process.env.SEED_CURATED_IMPORTS || "true").toLowerCase() !== "false";
+
+  if (shouldSeedCuratedImports) {
+    await importNakanoSourceBackedPrices(database);
+  }
+
+  return database;
 }
 
 module.exports = {
