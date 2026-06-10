@@ -70,6 +70,9 @@ const elements = {
   mapCanvas: document.querySelector("#mapCanvas"),
   storeDetail: document.querySelector("#storeDetail"),
   listStatus: document.querySelector("#listStatus"),
+  summaryArea: document.querySelector("#summaryArea"),
+  summaryDrink: document.querySelector("#summaryDrink"),
+  summaryPrice: document.querySelector("#summaryPrice"),
 };
 
 async function requestJson(path, options = {}) {
@@ -188,6 +191,34 @@ function getDrinkMarkerStyle(category = state.selectedDrink) {
 
 function storePriceLabel(store) {
   return store.selectedPrice?.formattedPrice || unknownPriceLabel;
+}
+
+function cheapestStore() {
+  return state.stores
+    .filter((store) => Number.isFinite(store.selectedPrice?.priceYen))
+    .reduce((cheapest, store) => {
+      if (!cheapest || store.selectedPrice.priceYen < cheapest.selectedPrice.priceYen) {
+        return store;
+      }
+
+      return cheapest;
+    }, null);
+}
+
+function summaryAreaLabel() {
+  if (isLocationMode()) {
+    return "現在地周辺";
+  }
+
+  const area = selectedArea();
+  return area ? area.name : "エリア未選択";
+}
+
+function updateSummary() {
+  const cheapest = cheapestStore();
+  elements.summaryArea.textContent = summaryAreaLabel();
+  elements.summaryDrink.textContent = drinkLabels[state.selectedDrink];
+  elements.summaryPrice.textContent = cheapest?.selectedPrice?.formattedPrice || "--";
 }
 
 function storeDrinkNameLabel(store) {
@@ -577,8 +608,9 @@ function renderStoreList() {
   elements.resultTitle.textContent = isLocationMode()
     ? `現在地に近い${drinkLabels[state.selectedDrink]}`
     : `${drinkLabels[state.selectedDrink]}が安い店`;
+  updateSummary();
 
-  for (const store of state.stores) {
+  for (const [index, store] of state.stores.entries()) {
     const distanceText = formatDistance(store.distanceMeters);
     const hasPrice = Boolean(store.selectedPrice);
     const active = store.id === state.selectedStoreId;
@@ -588,16 +620,21 @@ function renderStoreList() {
     card.dataset.storeId = store.id;
     card.setAttribute("aria-pressed", String(active));
     card.innerHTML = `
-      <div class="store-card-top">
-        <h3>${store.name}</h3>
-        <span class="price${hasPrice ? "" : " price-unknown"}">${storePriceLabel(store)}</span>
+      <div class="store-card-main">
+        <span class="rank-badge">${index + 1}</span>
+        <div class="store-card-copy">
+          <div class="store-card-top">
+            <h3>${store.name}</h3>
+            <span class="price${hasPrice ? "" : " price-unknown"}">${storePriceLabel(store)}</span>
+          </div>
+          <p>${store.stationExit} / ${store.openHours}</p>
+          <div class="price-line">
+            <p>${storeDrinkNameLabel(store)}</p>
+            ${freshnessBadge(store)}
+          </div>
+          ${distanceText ? `<p class="distance-text">現在地から ${distanceText}</p>` : ""}
+        </div>
       </div>
-      <p>${store.stationExit} / ${store.openHours}</p>
-      <div class="price-line">
-        <p>${storeDrinkNameLabel(store)}</p>
-        ${freshnessBadge(store)}
-      </div>
-      ${distanceText ? `<p class="distance-text">現在地から ${distanceText}</p>` : ""}
     `;
     card.addEventListener("click", () => selectStore(store.id, { focusMap: true }));
     elements.storeList.append(card);
@@ -639,21 +676,26 @@ function renderDetail() {
   elements.storeDetail.className = "";
   elements.storeDetail.innerHTML = `
     <div class="detail-grid">
-      <div>
-        <h2>${store.name}</h2>
-        <p class="meta">${store.address} / ${store.stationExit}</p>
+      <div class="detail-main">
+        <p class="section-kicker">選択中の店舗</p>
+        <div class="detail-title-row">
+          <h2>${store.name}</h2>
+          <span class="detail-main-price">${storePriceLabel(store)}</span>
+        </div>
+        <p class="meta">${store.address}</p>
+        <p class="meta">${store.stationExit} / ${store.openHours}</p>
         ${distanceText ? `<p class="location-badge">現在地から ${distanceText}</p>` : ""}
         <p class="detail-description">${store.description}</p>
         <div class="tag-list">
           ${store.tags.map((tag) => `<span class="tag">${tag}</span>`).join("")}
         </div>
       </div>
-      <div>
+      <div class="detail-side">
+        <p class="section-kicker">ドリンク価格</p>
         <div class="price-stack">
           ${priceRowsHtml}
         </div>
         <div class="detail-actions">
-          <span class="meta">${store.openHours}</span>
           ${tabelogLinkHtml(store)}
           <a class="primary-link" href="${store.mapUrl}" target="_blank" rel="noreferrer">地図で開く</a>
         </div>

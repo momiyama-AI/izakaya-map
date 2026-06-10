@@ -8,7 +8,10 @@
   </head>
   <body>
     <header class="app-header">
-      <h1>居酒屋ドリンク価格マップ</h1>
+      <div class="brand-block">
+        <p class="brand-kicker">今夜の一杯を、安く近く。</p>
+        <h1>居酒屋ドリンク価格マップ</h1>
+      </div>
       <div class="header-actions">
         <a class="source-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">店舗データ: OpenStreetMap</a>
         <a class="source-link" href="/admin.html">管理画面</a>
@@ -17,44 +20,35 @@
     </header>
 
     <main class="app-shell">
-      <aside class="control-panel" aria-label="検索条件">
-        <section class="panel-section">
-          <h2>エリア</h2>
+      <section class="search-dock" aria-label="検索条件">
+        <div class="dock-group dock-area">
+          <span class="dock-label">エリア</span>
           <div class="chip-row" id="areaTabs"></div>
-        </section>
+        </div>
 
-        <section class="panel-section">
-          <h2>ドリンク</h2>
+        <div class="dock-group dock-drink">
+          <span class="dock-label">ドリンク</span>
           <div class="chip-row" id="drinkTabs">
             <button type="button" class="segment active" data-drink="highball">ハイボール</button>
             <button type="button" class="segment" data-drink="beer">生ビール</button>
             <button type="button" class="segment" data-drink="lemon_sour">レモンサワー</button>
           </div>
-        </section>
+        </div>
 
-        <section class="panel-section">
-          <h2>並び替え</h2>
+        <div class="dock-group dock-sort">
+          <span class="dock-label">並び替え</span>
           <select id="sortSelect" class="select" aria-label="並び替え">
             <option value="price_asc">安い順</option>
             <option value="freshness_desc">更新が新しい順</option>
             <option value="distance_asc">現在地に近い順</option>
           </select>
-        </section>
+        </div>
 
-        <section class="panel-section">
-          <h2>現在地</h2>
+        <div class="dock-group dock-location">
+          <span class="dock-label">現在地</span>
           <button type="button" class="control-action" id="locateButton">現在地から探す</button>
           <p class="helper-text" id="locationHint" aria-live="polite">未取得</p>
-        </section>
-      </aside>
-
-      <section class="results-panel" aria-label="店舗一覧">
-        <div class="results-header">
-          <h2 id="resultTitle">店舗</h2>
-          <span id="resultCount" class="count-badge" aria-live="polite">0件</span>
         </div>
-        <div class="list-status" id="listStatus" role="status" hidden></div>
-        <div class="store-list" id="storeList"></div>
       </section>
 
       <section class="map-stage" aria-label="地図">
@@ -72,9 +66,38 @@
         </div>
       </section>
 
-      <section class="detail-panel" aria-label="店舗詳細" data-testid="store-detail">
-        <div id="storeDetail" class="detail-empty">店舗を選択してください</div>
-      </section>
+      <aside class="discovery-panel" aria-label="店舗検索結果">
+        <section class="quick-summary" aria-label="検索サマリー">
+          <div class="summary-item">
+            <span>表示中</span>
+            <strong id="summaryArea">読み込み中</strong>
+          </div>
+          <div class="summary-item">
+            <span>ドリンク</span>
+            <strong id="summaryDrink">ハイボール</strong>
+          </div>
+          <div class="summary-item summary-price">
+            <span>最安</span>
+            <strong id="summaryPrice">--</strong>
+          </div>
+        </section>
+
+        <section class="results-panel" aria-label="店舗一覧">
+          <div class="results-header">
+            <div>
+              <p class="section-kicker">候補リスト</p>
+              <h2 id="resultTitle">店舗</h2>
+            </div>
+            <span id="resultCount" class="count-badge" aria-live="polite">0件</span>
+          </div>
+          <div class="list-status" id="listStatus" role="status" hidden></div>
+          <div class="store-list" id="storeList"></div>
+        </section>
+
+        <section class="detail-panel" aria-label="店舗詳細" data-testid="store-detail">
+          <div id="storeDetail" class="detail-empty">店舗を選択してください</div>
+        </section>
+      </aside>
     </main>
 
     <script src="/app.js" type="module"></script>
