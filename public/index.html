@@ -8,14 +8,11 @@
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <p class="eyebrow">Izakaya Drink Price Map</p>
-        <h1>居酒屋ドリンク価格マップ</h1>
-      </div>
+      <h1>居酒屋ドリンク価格マップ</h1>
       <div class="header-actions">
-        <a class="source-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Store data: OpenStreetMap</a>
+        <a class="source-link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">店舗データ: OpenStreetMap</a>
         <a class="source-link" href="/admin.html">管理画面</a>
-        <span class="status-pill" id="serviceStatus">API確認中</span>
+        <span class="status-pill" id="serviceStatus" role="status">API確認中</span>
       </div>
     </header>
 
@@ -23,18 +20,12 @@
       <aside class="control-panel" aria-label="検索条件">
         <section class="panel-section">
           <h2>エリア</h2>
-          <div class="segmented" id="areaTabs"></div>
-        </section>
-
-        <section class="panel-section">
-          <h2>現在地</h2>
-          <button type="button" class="control-action" id="locateButton">現在地から探す</button>
-          <p class="helper-text" id="locationHint" aria-live="polite">未取得</p>
+          <div class="chip-row" id="areaTabs"></div>
         </section>
 
         <section class="panel-section">
           <h2>ドリンク</h2>
-          <div class="segmented vertical" id="drinkTabs">
+          <div class="chip-row" id="drinkTabs">
             <button type="button" class="segment active" data-drink="highball">ハイボール</button>
             <button type="button" class="segment" data-drink="beer">生ビール</button>
             <button type="button" class="segment" data-drink="lemon_sour">レモンサワー</button>
@@ -43,18 +34,33 @@
 
         <section class="panel-section">
           <h2>並び替え</h2>
-          <select id="sortSelect" class="select">
+          <select id="sortSelect" class="select" aria-label="並び替え">
             <option value="price_asc">安い順</option>
             <option value="freshness_desc">更新が新しい順</option>
             <option value="distance_asc">現在地に近い順</option>
           </select>
         </section>
+
+        <section class="panel-section">
+          <h2>現在地</h2>
+          <button type="button" class="control-action" id="locateButton">現在地から探す</button>
+          <p class="helper-text" id="locationHint" aria-live="polite">未取得</p>
+        </section>
       </aside>
+
+      <section class="results-panel" aria-label="店舗一覧">
+        <div class="results-header">
+          <h2 id="resultTitle">店舗</h2>
+          <span id="resultCount" class="count-badge" aria-live="polite">0件</span>
+        </div>
+        <div class="list-status" id="listStatus" role="status" hidden></div>
+        <div class="store-list" id="storeList"></div>
+      </section>
 
       <section class="map-stage" aria-label="地図">
         <div class="map-toolbar">
-          <div>
-            <p class="eyebrow">Selected Area</p>
+          <div class="map-toolbar-text">
+            <p class="toolbar-label">表示エリア</p>
             <h2 id="areaTitle">読み込み中</h2>
           </div>
           <button class="icon-button" id="refreshButton" type="button" aria-label="再読み込み" title="再読み込み">
@@ -64,17 +70,6 @@
         <div class="map-canvas" id="mapCanvas">
           <div class="station-marker" id="stationMarker">駅</div>
         </div>
-      </section>
-
-      <section class="results-panel" aria-label="店舗一覧">
-        <div class="results-header">
-          <div>
-            <p class="eyebrow">Search Results</p>
-            <h2 id="resultTitle">店舗</h2>
-          </div>
-          <span id="resultCount" class="count-badge">0件</span>
-        </div>
-        <div class="store-list" id="storeList"></div>
       </section>
 
       <section class="detail-panel" aria-label="店舗詳細" data-testid="store-detail">

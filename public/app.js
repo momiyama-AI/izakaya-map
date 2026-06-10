@@ -35,6 +35,9 @@ const unknownPriceLabel = "\u4fa1\u683c\u672a\u78ba\u8a8d";
 const unknownFreshnessLabel = "\u672a\u78ba\u8a8d";
 const resultFocusZoomLevel = 16;
 const mapPinFocusZoomLevel = 17;
+const expandedMarkerZoomLevel = 17;
+const compactMarkerStoreThreshold = 30;
+const compactMarkerVisibleLimit = 32;
 
 const state = {
   areas: [],
@@ -42,6 +45,7 @@ const state = {
   googleMap: null,
   googleMarkers: new Map(),
   googleUserMarker: null,
+  googleZoomListener: null,
   searchMode: "area",
   selectedAreaId: null,
   selectedDrink: "highball",
@@ -65,6 +69,7 @@ const elements = {
   storeList: document.querySelector("#storeList"),
   mapCanvas: document.querySelector("#mapCanvas"),
   storeDetail: document.querySelector("#storeDetail"),
+  listStatus: document.querySelector("#listStatus"),
 };
 
 async function requestJson(path, options = {}) {
@@ -102,6 +107,26 @@ async function track(type, payload = {}) {
 function setStatus(ok) {
   elements.serviceStatus.textContent = ok ? "API接続済み" : "API未接続";
   elements.serviceStatus.classList.toggle("ok", ok);
+  elements.serviceStatus.classList.toggle("error", !ok);
+}
+
+function showListStatus(kind, message, { onRetry } = {}) {
+  elements.listStatus.hidden = false;
+  elements.listStatus.classList.toggle("is-error", kind === "error");
+  elements.listStatus.innerHTML = `
+    ${kind === "loading" ? '<span class="spinner" aria-hidden="true"></span>' : ""}
+    <p>${message}</p>
+    ${onRetry ? '<button type="button" class="retry-button">再試行</button>' : ""}
+  `;
+  if (onRetry) {
+    elements.listStatus.querySelector(".retry-button").addEventListener("click", onRetry);
+  }
+}
+
+function hideListStatus() {
+  elements.listStatus.hidden = true;
+  elements.listStatus.classList.remove("is-error");
+  elements.listStatus.innerHTML = "";
 }
 
 function isLocationMode() {
@@ -261,7 +286,63 @@ function createPriceMarkerSvg(store, active = false) {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function compactMarkerPriceLabel(store) {
+  return store.selectedPrice?.formattedPrice || "\u672a";
+}
+
+function createCompactPriceMarkerSvg(store) {
+  const style = getDrinkMarkerStyle(store.selectedPrice?.category);
+  const price = escapeSvgText(compactMarkerPriceLabel(store));
+  const label = escapeSvgText(style.shortLabel);
+  const icon = drinkIconPath(style);
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="58" height="66" viewBox="0 0 58 66">
+      <filter id="shadow" x="-25%" y="-25%" width="150%" height="160%">
+        <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#20262e" flood-opacity="0.24"/>
+      </filter>
+      <path d="M29 3c13.8 0 25 10.7 25 24 0 18.2-25 36-25 36S4 45.2 4 27C4 13.7 15.2 3 29 3z"
+        fill="${style.color}" stroke="#ffffff" stroke-width="3" filter="url(#shadow)"/>
+      <circle cx="29" cy="27" r="17" fill="${style.activeColor}" opacity="0.96"/>
+      <g transform="translate(-13 -3) scale(0.66)" opacity="0.9">
+        ${icon}
+      </g>
+      <text x="29" y="21" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="900" fill="${style.accent}">${label}</text>
+      <text x="29" y="38" text-anchor="middle" font-family="Arial, sans-serif" font-size="${price.length > 4 ? 12 : 14}" font-weight="900" fill="#ffffff">${price}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function shouldUseCompactGoogleMarker(active = false) {
+  if (active || !state.googleMap || state.stores.length < compactMarkerStoreThreshold) {
+    return false;
+  }
+
+  const zoom = state.googleMap.getZoom?.() || 15;
+  return zoom < expandedMarkerZoomLevel;
+}
+
+function shouldShowGoogleMarker(index, active = false) {
+  if (active || !shouldUseCompactGoogleMarker(false)) {
+    return true;
+  }
+
+  return index < compactMarkerVisibleLimit;
+}
+
 function createGoogleMarkerIcon(maps, store, active = false) {
+  const compact = shouldUseCompactGoogleMarker(active);
+
+  if (compact) {
+    return {
+      url: createCompactPriceMarkerSvg(store),
+      scaledSize: new maps.Size(58, 66),
+      anchor: new maps.Point(29, 63),
+    };
+  }
+
   return {
     url: createPriceMarkerSvg(store, active),
     scaledSize: new maps.Size(active ? 136 : 128, active ? 83 : 78),
@@ -416,6 +497,9 @@ async function renderGoogleMapPins() {
       streetViewControl: false,
       mapId: state.config.maps.googleMapsMapId || undefined,
     });
+    state.googleZoomListener = state.googleMap.addListener("zoom_changed", () => {
+      refreshActiveStates();
+    });
   } else {
     state.googleMap.setCenter(mapCenter);
     state.googleMap.setZoom(15);
@@ -450,7 +534,7 @@ async function renderGoogleMapPins() {
     });
   }
 
-  for (const store of state.stores) {
+  state.stores.forEach((store, index) => {
     const active = store.id === state.selectedStoreId;
     const marker = new maps.Marker({
       map: state.googleMap,
@@ -458,13 +542,14 @@ async function renderGoogleMapPins() {
       title: store.name,
       icon: createGoogleMarkerIcon(maps, store, active),
       zIndex: active ? 1000 : 100,
+      visible: shouldShowGoogleMarker(index, active),
     });
     marker.addListener("click", () =>
       selectStore(store.id, { focusMap: true, zoomLevel: mapPinFocusZoomLevel }),
     );
     state.googleMarkers.set(store.id, marker);
     bounds.extend(marker.getPosition());
-  }
+  });
 
   if (state.stores.length > 0) {
     state.googleMap.fitBounds(bounds, 64);
@@ -495,14 +580,17 @@ function renderStoreList() {
 
   for (const store of state.stores) {
     const distanceText = formatDistance(store.distanceMeters);
+    const hasPrice = Boolean(store.selectedPrice);
+    const active = store.id === state.selectedStoreId;
     const card = document.createElement("button");
     card.type = "button";
-    card.className = `store-card${store.id === state.selectedStoreId ? " active" : ""}`;
+    card.className = `store-card${active ? " active" : ""}${hasPrice ? "" : " no-price"}`;
     card.dataset.storeId = store.id;
+    card.setAttribute("aria-pressed", String(active));
     card.innerHTML = `
       <div class="store-card-top">
         <h3>${store.name}</h3>
-        <span class="price">${storePriceLabel(store)}</span>
+        <span class="price${hasPrice ? "" : " price-unknown"}">${storePriceLabel(store)}</span>
       </div>
       <p>${store.stationExit} / ${store.openHours}</p>
       <div class="price-line">
@@ -552,7 +640,6 @@ function renderDetail() {
   elements.storeDetail.innerHTML = `
     <div class="detail-grid">
       <div>
-        <p class="eyebrow">Store Detail</p>
         <h2>${store.name}</h2>
         <p class="meta">${store.address} / ${store.stationExit}</p>
         ${distanceText ? `<p class="location-badge">現在地から ${distanceText}</p>` : ""}
@@ -577,22 +664,25 @@ function renderDetail() {
 
 function refreshActiveStates() {
   for (const card of elements.storeList.querySelectorAll(".store-card")) {
-    card.classList.toggle("active", card.dataset.storeId === state.selectedStoreId);
+    const active = card.dataset.storeId === state.selectedStoreId;
+    card.classList.toggle("active", active);
+    card.setAttribute("aria-pressed", String(active));
   }
 
   if (useGoogleMaps()) {
     const maps = window.google?.maps;
     if (maps) {
-      for (const store of state.stores) {
+      state.stores.forEach((store, index) => {
         const marker = state.googleMarkers.get(store.id);
         if (!marker) {
-          continue;
+          return;
         }
 
         const active = store.id === state.selectedStoreId;
         marker.setIcon(createGoogleMarkerIcon(maps, store, active));
         marker.setZIndex(active ? 1000 : 100);
-      }
+        marker.setVisible(shouldShowGoogleMarker(index, active));
+      });
     }
     return;
   }
@@ -619,6 +709,7 @@ function focusStoreOnMap(storeId, options = {}) {
 function selectStore(storeId, options = {}) {
   state.selectedStoreId = storeId;
   refreshActiveStates();
+  elements.storeList.querySelector(".store-card.active")?.scrollIntoView({ block: "nearest" });
   if (options.focusMap) {
     focusStoreOnMap(storeId, options);
   }
@@ -647,7 +738,24 @@ function buildStoreSearchParams() {
 }
 
 async function loadStores() {
-  const result = await requestJson(`/api/v1/stores?${buildStoreSearchParams().toString()}`);
+  elements.refreshButton.disabled = true;
+  elements.storeList.innerHTML = "";
+  showListStatus("loading", "店舗情報を読み込み中です…");
+
+  let result;
+  try {
+    result = await requestJson(`/api/v1/stores?${buildStoreSearchParams().toString()}`);
+  } catch (error) {
+    console.warn(error);
+    elements.resultCount.textContent = "0件";
+    showListStatus("error", "店舗情報を取得できませんでした。通信状態を確認してください。", {
+      onRetry: () => loadStores(),
+    });
+    return;
+  } finally {
+    elements.refreshButton.disabled = false;
+  }
+
   state.stores = result.stores;
   state.selectedStoreId = state.stores[0]?.id || null;
 
@@ -663,6 +771,12 @@ async function loadStores() {
   await renderMapPins();
   renderStoreList();
   renderDetail();
+
+  if (state.stores.length === 0) {
+    showListStatus("empty", "条件に合う店舗が見つかりませんでした。エリアやドリンクを変えてお試しください。");
+  } else {
+    hideListStatus();
+  }
 }
 
 function getCurrentPosition() {
@@ -716,6 +830,7 @@ async function useCurrentLocation() {
 
 async function initialize() {
   try {
+    showListStatus("loading", "サービスに接続しています…");
     await requestJson("/api/v1/health");
     setStatus(true);
 
@@ -726,8 +841,11 @@ async function initialize() {
     await loadStores();
     track("app_loaded");
   } catch (error) {
+    console.warn(error);
     setStatus(false);
-    elements.storeList.innerHTML = `<p class="meta">${error.message}</p>`;
+    showListStatus("error", "初期データを読み込めませんでした。時間をおいて再試行してください。", {
+      onRetry: () => initialize(),
+    });
   }
 }
 
